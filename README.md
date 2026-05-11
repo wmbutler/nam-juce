@@ -59,13 +59,13 @@ NAM/
 
 ## Download — macOS standalone (Apple Silicon)
 
-GitHub cannot offer a one-click download of a **`.app`** bundle from the file tree (it is a folder). Use the ZIP instead:
+Download the latest macOS arm64 ZIP from GitHub Releases:
 
-**[Download Neural Amp Modeler (macOS arm64)](https://github.com/wmbutler/nam-juce/raw/master/binaries/macos-arm64/NeuralAmpModeler-macOS-arm64.zip)**
+**[Download Neural Amp Modeler (macOS arm64)](https://github.com/wmbutler/nam-juce/releases/latest/download/NeuralAmpModeler-macOS-arm64.zip)**
 
 Unpack the archive and open **`Neural Amp Modeler.app`** (you may need **right-click → Open** the first time for Gatekeeper).
 
-The same **`Neural Amp Modeler.app`** also lives under **[`binaries/macos-arm64/`](binaries/macos-arm64/)** in the repo for browsing or cloning. Both the app bundle and the ZIP are refreshed when someone runs a **Release** standalone build on an **arm64-only** macOS CMake configuration (see *Building* below).
+The release ZIP is generated from the same **`Neural Amp Modeler.app`** that lives under **[`binaries/macos-arm64/`](binaries/macos-arm64/)** in the repo. Both are refreshed by the Release arm64 build path (see *Building* below).
 
 ---
 
