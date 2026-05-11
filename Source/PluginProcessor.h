@@ -75,6 +75,10 @@ public:
 
     foleys::LevelMeterSource& getMeterInSource() { return meterInSource; }
     foleys::LevelMeterSource& getMeterOutSource() { return meterOutSource; }
+    void setInputMuted(bool shouldMute) noexcept { inputMuted.store(shouldMute); }
+    void setOutputMuted(bool shouldMute) noexcept { outputMuted.store(shouldMute); }
+    void setCaptureActive(bool shouldBeActive) noexcept { captureActive.store(shouldBeActive); }
+    void setIrActive(bool shouldBeActive) noexcept { irActive.store(shouldBeActive); }
 
     juce::AudioProcessorValueTreeState apvts;
     juce::AudioProcessorValueTreeState::ParameterLayout createParameters ();
@@ -104,6 +108,8 @@ private:
     std::atomic<float>* filterCuttofs[2];
 
     juce::dsp::ProcessorDuplicator<juce::dsp::IIR::Filter<float>, juce::dsp::IIR::Coefficients<float>> highCut, lowCut;
+    float lastLowCutApplied = -1.f;
+    float lastHighCutApplied = -1.f;
 
     std::string lastModelPath = "null";
     std::string lastModelName = "null";
@@ -123,6 +129,10 @@ private:
 
     foleys::LevelMeterSource meterInSource;
     foleys::LevelMeterSource meterOutSource;
+    std::atomic<bool> inputMuted { false };
+    std::atomic<bool> outputMuted { false };
+    std::atomic<bool> captureActive { false };
+    std::atomic<bool> irActive { false };
 
     PresetManager presetManager;
 

@@ -113,7 +113,10 @@ void NamJUCEAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock
     highCut.reset();
     highCut.prepare(spec);
 
-    meterInSource.resize(getTotalNumOutputChannels(), sampleRate * 0.1 / samplesPerBlock);
+    lastLowCutApplied = -1.f;
+    lastHighCutApplied = -1.f;
+
+    meterInSource.resize(getTotalNumInputChannels(), sampleRate * 0.1 / samplesPerBlock);
     meterOutSource.resize(getTotalNumOutputChannels(), sampleRate * 0.1 / samplesPerBlock);
 
     // Load last NAM Model
@@ -302,26 +305,41 @@ bool NamJUCEAudioProcessor::isBusesLayoutSupported(const BusesLayout& layouts) c
     // In this template code we only support mono or stereo.
     // Some plugin hosts, such as certain GarageBand versions, will only
     // load plugins that support stereo bus layouts.
-    if (layouts.getMainOutputChannelSet() != juce::AudioChannelSet::mono() && layouts.getMainOutputChannelSet() != juce::AudioChannelSet::stereo())
+    const auto& out = layouts.getMainOutputChannelSet();
+
+    if (out != juce::AudioChannelSet::mono() && out != juce::AudioChannelSet::stereo())
         return false;
 
-            // This checks if the input layout matches the output layout
         #if !JucePlugin_IsSynth
-    if (layouts.getMainOutputChannelSet() != layouts.getMainInputChannelSet())
-        return false;
-        #endif
+    const auto& in = layouts.getMainInputChannelSet();
+
+    if (in == out)
+        return true;
+
+    // Effect is mono in / stereo out by default; hosts may open stereo in / stereo out and copy mono to both.
+    if (in == juce::AudioChannelSet::mono() && out == juce::AudioChannelSet::stereo())
+        return true;
+
+    return false;
+        #else
 
     return true;
+        #endif
     #endif
 }
 #endif
 
 void NamJUCEAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
-    meterInSource.measureBlock(buffer);
     juce::ScopedNoDenormals noDenormals;
     auto totalNumInputChannels = getTotalNumInputChannels();
     auto totalNumOutputChannels = getTotalNumOutputChannels();
+
+    if (inputMuted.load())
+        for (auto i = 0; i < totalNumInputChannels; ++i)
+            buffer.clear(i, 0, buffer.getNumSamples());
+
+    meterInSource.measureBlock(buffer);
 
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
         buffer.clear(i, 0, buffer.getNumSamples());
@@ -331,9 +349,10 @@ void NamJUCEAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
     auto* channelDataLeft = buffer.getWritePointer(0);
     auto* channelDataRight = buffer.getWritePointer(1);
 
-    myNAM.processBlock(buffer);
+    if (captureActive.load() && namModelLoaded)
+        myNAM.processBlock(buffer);
 
-    if (bool(*apvts.getRawParameterValue("CAB_ON_ID")) && irLoaded)
+    if (irActive.load() && bool(*apvts.getRawParameterValue("CAB_ON_ID")) && irLoaded)
     {
         cab.process(juce::dsp::ProcessContextReplacing<float>(block));
         if (irFound)
@@ -349,17 +368,42 @@ void NamJUCEAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
         channelDataRight[sample] = channelDataLeft[sample];
 
 
-    // Filters
-    if (filterCuttofs[OutputFilters::LowCutF]->load() > 20)
+    // Filters — only push new coefficients when cutoffs change. Updating *state every block
+    // leaves the IIR delay line from the old coeffs and causes buffer-boundary clicks/crackle.
+    constexpr float cutoffEpsilon = 0.2f;
+    const float lowCutHz = filterCuttofs[OutputFilters::LowCutF]->load();
+    const float highCutHz = filterCuttofs[OutputFilters::HighCutF]->load();
+
+    if (lowCutHz > 20)
     {
-        *lowCut.state = *juce::dsp::IIR::Coefficients<float>::makeHighPass(getSampleRate(), filterCuttofs[OutputFilters::LowCutF]->load(), 1.0f);
+        if (std::abs(lowCutHz - lastLowCutApplied) > cutoffEpsilon)
+        {
+            lastLowCutApplied = lowCutHz;
+            *lowCut.state = *juce::dsp::IIR::Coefficients<float>::makeHighPass(getSampleRate(), lowCutHz, 1.0f);
+            lowCut.reset();
+        }
+
         lowCut.process(juce::dsp::ProcessContextReplacing<float>(block));
     }
-
-    if (filterCuttofs[OutputFilters::HighCutF]->load() < 20000)
+    else
     {
-        *highCut.state = *juce::dsp::IIR::Coefficients<float>::makeLowPass(getSampleRate(), filterCuttofs[OutputFilters::HighCutF]->load(), 1.0f);
+        lastLowCutApplied = -1.f;
+    }
+
+    if (highCutHz < 20000)
+    {
+        if (std::abs(highCutHz - lastHighCutApplied) > cutoffEpsilon)
+        {
+            lastHighCutApplied = highCutHz;
+            *highCut.state = *juce::dsp::IIR::Coefficients<float>::makeLowPass(getSampleRate(), highCutHz, 1.0f);
+            highCut.reset();
+        }
+
         highCut.process(juce::dsp::ProcessContextReplacing<float>(block));
+    }
+    else
+    {
+        lastHighCutApplied = -1.f;
     }
 
     // Doubler
@@ -368,6 +412,10 @@ void NamJUCEAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
         doubler.setDelayMs(*apvts.getRawParameterValue("DOUBLER_SPREAD_ID"));
         doubler.process(buffer);
     }
+
+    if (outputMuted.load())
+        for (auto i = 0; i < totalNumOutputChannels; ++i)
+            buffer.clear(i, 0, buffer.getNumSamples());
 
     meterOutSource.measureBlock(buffer);
 }

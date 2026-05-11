@@ -3,6 +3,7 @@
 #include <iostream>
 
 NeuralAmpModeler::NeuralAmpModeler()
+    : sampleRate(48000.0), samplesPerBlock(512)
 {
     mToneStack = std::make_unique<dsp::tone_stack::BasicNamToneStack>();
     nam::activations::Activation::enable_fast_tanh();
@@ -31,6 +32,20 @@ void NeuralAmpModeler::processBlock(juce::AudioBuffer<float>& buffer)
     this->applyDSPStaging();
     this->updateParameters();
 
+    const int numSamples = buffer.getNumSamples();
+
+    if (outputBuffer.getNumSamples() < numSamples)
+    {
+        outputBuffer.setSize(1, numSamples, false, false, true);
+        samplesPerBlock = numSamples;
+
+        if (mModel != nullptr)
+            mModel->Reset(sampleRate, numSamples);
+
+        if (mStagedModel != nullptr)
+            mStagedModel->Reset(sampleRate, numSamples);
+    }
+
     auto* channelDataLeft = buffer.getWritePointer(0);
     auto* channelDataRight = buffer.getWritePointer(1);
     auto* outputData = outputBuffer.getWritePointer(0);
@@ -48,8 +63,25 @@ void NeuralAmpModeler::processBlock(juce::AudioBuffer<float>& buffer)
         // Input Gain
         buffer.applyGain(dB_to_linear(params[Parameters::kInputLevel]->load()));
 
-        mModel->process(*inputPointer, *outputPointer, buffer.getNumSamples());
-        mModel->finalize_(buffer.getNumSamples());
+        // WaveNet resizes/zeroes work matrices whenever num_frames changes; host callbacks often
+        // use variable block sizes. Fixed-size chunks keep frames stable (skip when resampling so
+        // Lanczos state sees one block per host callback).
+        if (mModel->usesInternalResampling())
+        {
+            mModel->process(*inputPointer, *outputPointer, numSamples);
+            mModel->finalize_(numSamples);
+        }
+        else
+        {
+            int pos = 0;
+            while (pos < numSamples)
+            {
+                const int n = juce::jmin(kNamInferenceFrames, numSamples - pos);
+                mModel->process(*inputPointer + pos, *outputPointer + pos, n);
+                mModel->finalize_(n);
+                pos += n;
+            }
+        }
 
         // Normalize loudness
         if (this->outputNormalized)
@@ -83,7 +115,8 @@ bool NeuralAmpModeler::loadModel(const std::string modelPath)
         std::unique_ptr<nam::DSP> model = nam::get_dsp(dspPath);
         std::unique_ptr<ResamplingNAM> temp = std::make_unique<ResamplingNAM>(std::move(model), this->sampleRate);
 
-        temp->Reset(this->sampleRate, this->samplesPerBlock);
+        const int resetBlock = juce::jmax(32, this->samplesPerBlock);
+        temp->Reset(this->sampleRate, resetBlock);
 
         mStagedModel = std::move(temp);
 

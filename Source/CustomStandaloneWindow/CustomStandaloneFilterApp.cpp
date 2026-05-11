@@ -24,12 +24,13 @@
 */
 
 
+#include <functional>
+
 #include <juce_core/system/juce_TargetPlatform.h>
 
-#include <juce_audio_plugin_client/utility/juce_CheckSettingMacros.h>
-#include <juce_audio_plugin_client/utility/juce_IncludeSystemHeaders.h>
-#include <juce_audio_plugin_client/utility/juce_IncludeModuleHeaders.h>
-#include <juce_audio_plugin_client/utility/juce_WindowsHooks.h>
+#include <juce_audio_plugin_client/detail/juce_CheckSettingMacros.h>
+#include <juce_audio_plugin_client/detail/juce_IncludeSystemHeaders.h>
+#include <juce_audio_plugin_client/detail/juce_IncludeModuleHeaders.h>
 
 #include <juce_audio_devices/juce_audio_devices.h>
 #include <juce_gui_extra/juce_gui_extra.h>
@@ -40,13 +41,19 @@
 // set it then by default we'll just create a simple one as below.
 #if JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP
 
+    #include "AboutDialogComponent.h"
     #include "CustomStandaloneFilterWindow.h"
 
 namespace juce
 {
 
+#if JUCE_MAC
+void requestMacOSMicrophoneAccess(std::function<void()> completion);
+#endif
+
 //==============================================================================
-class CustomStandaloneFilterApp : public JUCEApplication
+class CustomStandaloneFilterApp : public JUCEApplication,
+                                  private MenuBarModel
 {
 public:
     CustomStandaloneFilterApp()
@@ -71,6 +78,51 @@ public:
     const String getApplicationVersion() override { return JucePlugin_VersionString; }
     bool moreThanOneInstanceAllowed() override { return true; }
     void anotherInstanceStarted(const String&) override {}
+
+    StringArray getMenuBarNames() override
+    {
+        return { "File" };
+    }
+
+    PopupMenu getMenuForIndex(int topLevelMenuIndex, const String&) override
+    {
+        PopupMenu menu;
+
+        if (topLevelMenuIndex == 0)
+        {
+            menu.addItem(MenuItemIds::about, "About Neural Amp Modeler");
+            menu.addItem(MenuItemIds::setToneDirectory, "Set Tone Directory...");
+        }
+
+        return menu;
+    }
+
+    void menuItemSelected(int menuItemID, int) override
+    {
+        switch (menuItemID)
+        {
+            case MenuItemIds::about:
+            {
+                DialogWindow::LaunchOptions options;
+                options.dialogTitle = "About Neural Amp Modeler";
+                options.dialogBackgroundColour = Colours::white;
+                options.escapeKeyTriggersCloseButton = true;
+                options.useNativeTitleBar = true;
+                options.resizable = false;
+                options.componentToCentreAround = mainWindow.get();
+                options.content.setOwned(new AboutDialogComponent(getApplicationVersion()));
+                options.launchAsync();
+                break;
+            }
+
+            case MenuItemIds::setToneDirectory:
+                showToneDirectoryChooser();
+                break;
+
+            default:
+                break;
+        }
+    }
 
     virtual StandaloneFilterWindow* createWindow()
     {
@@ -97,6 +149,19 @@ public:
     //==============================================================================
     void initialise(const String&) override
     {
+    #if JUCE_MAC
+        MenuBarModel::setMacMainMenu(this);
+    #endif
+
+    #if JUCE_MAC
+        requestMacOSMicrophoneAccess([this] { showMainWindow(); });
+    #else
+        showMainWindow();
+    #endif
+    }
+
+    void showMainWindow()
+    {
         mainWindow.reset(createWindow());
 
     #if JUCE_STANDALONE_FILTER_WINDOW_USE_KIOSK_MODE
@@ -108,6 +173,11 @@ public:
 
     void shutdown() override
     {
+    #if JUCE_MAC
+        MenuBarModel::setMacMainMenu(nullptr);
+    #endif
+
+        toneDirectoryChooser = nullptr;
         mainWindow = nullptr;
         appProperties.saveIfNeeded();
     }
@@ -134,8 +204,78 @@ public:
     }
 
 protected:
+    enum MenuItemIds
+    {
+        about = 1,
+        setToneDirectory
+    };
+
+    void showToneDirectoryChooser()
+    {
+        toneDirectoryChooser = std::make_unique<FileChooser>("Set Tone Directory",
+                                                             File::getSpecialLocation(File::userHomeDirectory),
+                                                             String{},
+                                                             true);
+
+        toneDirectoryChooser->launchAsync(FileBrowserComponent::openMode | FileBrowserComponent::canSelectDirectories,
+                                          [this](const FileChooser& chooser)
+        {
+            const auto result = chooser.getResult();
+            if (result == File{})
+                return;
+
+            const auto namRoot = resolveNamRootDirectory(result);
+            const auto directoryResult = ensureNamDirectoryStructure(namRoot);
+
+            if (directoryResult.failed())
+            {
+                AlertWindow::showMessageBoxAsync(AlertWindow::WarningIcon, "Set Tone Directory",
+                                                 "Unable to create the NAM directory structure:\n"
+                                                     + directoryResult.getErrorMessage());
+                return;
+            }
+
+            if (auto* settings = appProperties.getUserSettings())
+            {
+                settings->setValue("toneDirectory", namRoot.getFullPathName());
+                appProperties.saveIfNeeded();
+            }
+        });
+    }
+
+    static File resolveNamRootDirectory(File selectedDirectory)
+    {
+        selectedDirectory = selectedDirectory.getFullPathName();
+
+        for (auto current = selectedDirectory;; current = current.getParentDirectory())
+        {
+            if (current.getFileName().equalsIgnoreCase("NAM"))
+                return current;
+
+            const auto parent = current.getParentDirectory();
+
+            if (parent == current)
+                break;
+        }
+
+        return selectedDirectory.getChildFile("NAM");
+    }
+
+    static Result ensureNamDirectoryStructure(const File& namRoot)
+    {
+        if (auto result = namRoot.createDirectory(); result.failed())
+            return result;
+
+        for (const auto* childDirectoryName : { "Presets", "IRs", "Captures" })
+            if (auto result = namRoot.getChildFile(childDirectoryName).createDirectory(); result.failed())
+                return result;
+
+        return Result::ok();
+    }
+
     ApplicationProperties appProperties;
     std::unique_ptr<StandaloneFilterWindow> mainWindow;
+    std::unique_ptr<FileChooser> toneDirectoryChooser;
 };
 
 } // namespace juce

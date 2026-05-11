@@ -1,9 +1,38 @@
 cmake_minimum_required(VERSION 3.15)
 
 set(PROJECT_NAME "NEURAL_AMP_MODELER")
-set(PLUGIN_VERSION 0.4.0)
+file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" PLUGIN_VERSION LIMIT_COUNT 1)
+string(STRIP "${PLUGIN_VERSION}" PLUGIN_VERSION)
+
+# Must be set before project() so the toolchain targets arm64 on Apple Silicon.
+# Use hardware sysctl (not uname): under Rosetta, uname -m may report x86_64.
+execute_process(COMMAND uname -s OUTPUT_VARIABLE NAM_OSX_KERNEL_NAME OUTPUT_STRIP_TRAILING_WHITESPACE)
+if(NAM_OSX_KERNEL_NAME STREQUAL "Darwin")
+    execute_process(COMMAND sysctl -n hw.optional.arm64 OUTPUT_VARIABLE NAM_HW_ARM64 OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+    if(NAM_HW_ARM64 STREQUAL "1")
+        set(CMAKE_OSX_ARCHITECTURES arm64 CACHE STRING "macOS architectures" FORCE)
+        message(STATUS "CMAKE_OSX_ARCHITECTURES: arm64 (Apple Silicon hardware)")
+    endif()
+endif()
 
 project(${PROJECT_NAME} VERSION ${PLUGIN_VERSION})
+
+# Release standalone → binaries/macos-arm64 (git-tracked). Only for arm64-native macOS configs.
+set(NAM_PUBLISH_ARM_STANDALONE_TO_BINARIES FALSE)
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    if(CMAKE_OSX_ARCHITECTURES STREQUAL "arm64")
+        set(NAM_PUBLISH_ARM_STANDALONE_TO_BINARIES TRUE)
+    elseif(NOT CMAKE_OSX_ARCHITECTURES AND NAM_HW_ARM64 STREQUAL "1")
+        set(NAM_PUBLISH_ARM_STANDALONE_TO_BINARIES TRUE)
+    endif()
+endif()
+
+set(NAM_GENERATED_INCLUDE_ROOT "${CMAKE_CURRENT_BINARY_DIR}/generated")
+file(MAKE_DIRECTORY "${NAM_GENERATED_INCLUDE_ROOT}/NAM")
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/Modules/NeuralAmpModelerCore/NAM/version.h.in"
+    "${NAM_GENERATED_INCLUDE_ROOT}/NAM/version.h"
+    @ONLY)
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/CMake/helpers.cmake")
 init_submodules()
@@ -38,9 +67,12 @@ else()
     add_subdirectory(Modules/JUCE)
 endif()
 
+include_directories(SYSTEM "${NAM_GENERATED_INCLUDE_ROOT}")
 include_directories(SYSTEM Modules/NeuralAmpModelerCore)
 include_directories(SYSTEM Modules/AudioDSPTools)
-add_subdirectory(Modules/NeuralAmpModelerCore/Dependencies/eigen)
+add_library(Eigen3::Eigen INTERFACE IMPORTED)
+set_target_properties(Eigen3::Eigen PROPERTIES
+    INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}/Modules/NeuralAmpModelerCore/Dependencies/eigen")
 add_subdirectory(Modules/json)
 
 juce_add_plugin(${PROJECT_NAME}
@@ -48,6 +80,9 @@ juce_add_plugin(${PROJECT_NAME}
     ICON_BIG "Assets/ICON.png"
     ICON_SMALL "Assets/ICON.png"
     COMPANY_NAME "Manos Labrakis"
+    BUNDLE_ID com.manoslabrakis.neuralampmodeler
+    MICROPHONE_PERMISSION_ENABLED TRUE
+    MICROPHONE_PERMISSION_TEXT "Neural Amp Modeler needs microphone access to process audio input."
     # IS_SYNTH TRUE/FALSE                 
     # NEEDS_MIDI_INPUT TRUE/FALSE           
     # NEEDS_MIDI_OUTPUT TRUE/FALSE        
@@ -84,7 +119,7 @@ PRIVATE
     Modules/NeuralAmpModelerCore/NAM/lstm.h
     Modules/NeuralAmpModelerCore/NAM/util.cpp
     Modules/NeuralAmpModelerCore/NAM/util.h
-    Modules/NeuralAmpModelerCore/NAM/version.h
+    "${NAM_GENERATED_INCLUDE_ROOT}/NAM/version.h"
     Modules/NeuralAmpModelerCore/NAM/wavenet.cpp
     Modules/NeuralAmpModelerCore/NAM/wavenet.h
     Modules/AudioDSPTools/dsp/dsp.cpp
@@ -102,14 +137,18 @@ PRIVATE
     Modules/AudioDSPTools/dsp/wav.h    
 )
 
-if (CMAKE_SYSTEM_PROCESSOR MATCHES "(amd64)|(AMD64)|(x86_64)")
-	option(USE_NATIVE_ARCH "Enable architecture-specific optimizations" OFF)
+set_source_files_properties("${NAM_GENERATED_INCLUDE_ROOT}/NAM/version.h" PROPERTIES GENERATED TRUE)
 
-	if (USE_NATIVE_ARCH)
-		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=x86-64-v3")
-		message("Enabling -march=x86-64-v3")
-	endif (USE_NATIVE_ARCH)
-endif ()
+option(USE_NATIVE_ARCH "Enable architecture-specific optimizations (x86-64-v3 on x86_64 hosts only)" OFF)
+
+if (USE_NATIVE_ARCH)
+    if (APPLE AND CMAKE_OSX_ARCHITECTURES STREQUAL "arm64")
+        message(STATUS "USE_NATIVE_ARCH: skipping -march=x86-64-v3 (macOS arm64 build)")
+    elseif (CMAKE_SYSTEM_PROCESSOR MATCHES "(amd64)|(AMD64)|(x86_64)")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=x86-64-v3")
+        message(STATUS "Enabling -march=x86-64-v3 for ${CMAKE_SYSTEM_PROCESSOR}")
+    endif()
+endif()
 
 if (BETA_RELEASE)
     set(PLUG_VERSION "${PLUGIN_VERSION} BETA")
@@ -154,6 +193,7 @@ target_link_libraries(${PROJECT_NAME}
 
 target_include_directories(${PROJECT_NAME}
     PUBLIC
+        "${NAM_GENERATED_INCLUDE_ROOT}/NAM"
         Modules/NeuralAmpModelerCore/NAM
         Modules/NeuralAmpModelerCore/Dependencies/eigen
         Modules/NeuralAmpModelerCore/Dependencies/nlohmann
@@ -164,6 +204,22 @@ target_include_directories(${PROJECT_NAME}
     #INTERFACE
         #$<TARGET_PROPERTY:juce_plugin_modules,INCLUDE_DIRECTORIES>
     )
+
+if (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    add_custom_command(TARGET ${PROJECT_NAME}_Standalone POST_BUILD
+        COMMAND /usr/bin/codesign --force --sign - "$<TARGET_BUNDLE_DIR:${PROJECT_NAME}_Standalone>"
+        COMMENT "Ad-hoc signing standalone app for macOS privacy permissions")
+
+    if(NAM_PUBLISH_ARM_STANDALONE_TO_BINARIES)
+        add_custom_command(TARGET ${PROJECT_NAME}_Standalone POST_BUILD
+            COMMAND ${CMAKE_COMMAND}
+                -DNAM_BUILD_CONFIG=$<CONFIG>
+                -DNAM_REPO_ROOT=${CMAKE_CURRENT_SOURCE_DIR}
+                -DNAM_BUNDLE=$<TARGET_BUNDLE_DIR:${PROJECT_NAME}_Standalone>
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/CMake/CopyStandaloneToBinaries.cmake"
+            COMMENT "Sync Release standalone to binaries/macos-arm64 (for commit)")
+    endif()
+endif()
 
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Windows")

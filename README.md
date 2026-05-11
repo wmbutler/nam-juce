@@ -1,113 +1,126 @@
-<div id="namjuce-icon" align="center">
-    <br />
-    <img src="./Assets/ICON.png" alt="nam-juce icon" width="128"/>
-    <h1>NAM JUCE</h1>
-    <h3>Neural Amp Modeler JUCE Implementation</h3>
+<div align="center">
+
+<img src="./Assets/ICON.png" alt="Neural Amp Modeler" width="96"/>
+
+# Neural Amp Modeler
+
+**Version:** see the [`VERSION`](VERSION) file at the repository root (single source of truth for CMake and releases).
+
+A JUCE-based Neural Amp Modeler implementation, derived from a large rewrite of [Tr3m/nam-juce](https://github.com/Tr3m/nam-juce).
+
+[![License](https://img.shields.io/github/license/tr3m/nam-juce.svg)](LICENSE.txt)
+
 </div>
 
+This project builds on Steven Atkinson’s [NeuralAmpModeler](https://github.com/sdatkinson/NeuralAmpModelerPlugin) ecosystem: run `.nam` captures and cabinet IRs inside AU, VST3, and a standalone app.
 
-<div id="badges" align="center">
+---
 
-[![current release](https://img.shields.io/github/release/tr3m/nam-juce.svg)](https://github.com/tr3m/nam-juce/releases)
-[![chocolatey](https://img.shields.io/chocolatey/v/nam-juce)](https://community.chocolatey.org/packages/nam-juce/)
-[![license](https://img.shields.io/github/license/tr3m/nam-juce.svg)](https://github.com/tr3m/nam-juce/blob/master/LICENSE.txt)
-</div>
+## What changed in this fork
 
-<div id="badges" align="center">
+- **Major UI and architecture rewrite** — mock-driven layout, new `NamUi` stack, streamlined workflow.
+- **JUCE 8** — vendored under `Modules/JUCE/` and wired through CMake.
+- **Presets redesigned** — JSON preset library under `NAM/Presets/` with `manifest.json`, save/rename/delete/reorder, and paths stored **relative to the NAM root** (no UI-only aliases in files).
+- **Single opinionated content layout** — one root folder (your **`NAM`** directory) with fixed subfolders; see below.
+- **Tighter, compact plugin window** — optimized for a narrow portrait layout.
 
-**A JUCE implementation of Steven Atkinson's [NeuralAmpModelerPlugin](https://github.com/sdatkinson/NeuralAmpModelerPlugin). This Repository is still a work-in-proress, but the basic functionality is there.**
-</div>
+---
 
-</br>
+## NAM directory layout
+
+The app stores a **NAM root** path (via standalone **File → Settings → Set NAM Directory**, or equivalent). All captures, IRs, and presets live under that root.
+
+**Folder names are fixed:** under that root you must use exactly **`Captures`**, **`IRs`**, and **`Presets`** (same spelling and capitalization). Renaming or nesting them differently will not be picked up.
+
+```
+NAM/
+├── Captures/              # .nam models
+│   ├── *.nam              # optional: loose files here show under “Standalone” (first in UI)
+│   └── <collection>/      # optional subfolders of .nam files
+├── IRs/                   # .wav impulse responses (this fork uses folder name IRs)
+│   ├── *.wav              # optional: loose files show under “Standalone” (first in UI)
+│   └── <collection>/
+└── Presets/               # user preset library
+    ├── manifest.json      # ordered list of { "id", "name" }
+    └── <id>.json          # one preset file per id (paths relative to NAM root)
+```
+
+**Standalone (collection row):** If there are `.nam` or `.wav` files **directly** in `Captures/` or `IRs/`, the browser shows a synthetic **Standalone** entry **first**, then other folders in natural sort order.
+
+---
+
+## UI preview
+
 <p align="center">
-    <img src="https://i.allthepics.net/2024/08/12/namJuce.gif" alt="animated" />
+  <img src="./Assets/README-ui-screenshot.png" alt="Neural Amp Modeler UI (macOS)" width="380"/>
 </p>
 
-## Table of Contents
+---
 
-- [Installation](#installation)
-  - [Releases](#releases)
-  - [Chocolatey (Windows)](#chocolatey)
-- [Building](#building)
-    - [Optional CMake Flags](#optional-flags)
-- [Supported Platforms](#supported-platforms)
-- [Supported Formats](#supported-formats)
-- [Getting Amp Models](#getting-models)
+## Download — macOS standalone (Apple Silicon)
 
-## <a id="installation"></a> Installation
+GitHub cannot offer a one-click download of a **`.app`** bundle from the file tree (it is a folder). Use the ZIP instead:
 
-### <a id="releases"></a> Releases
-The latest version for Windows and MacOS can be found in the [Releases](https://github.com/Tr3m/nam-juce/releases) page.
+**[Download Neural Amp Modeler (macOS arm64)](https://github.com/wmbutler/nam-juce/raw/master/binaries/macos-arm64/NeuralAmpModeler-macOS-arm64.zip)**
 
-### <a id="chocolatey"></a> Chocolatey (Windows)
-For windows, the Chocolatey package can be installed by running:
-```bash
-choco install nam-juce
-```
+Unpack the archive and open **`Neural Amp Modeler.app`** (you may need **right-click → Open** the first time for Gatekeeper).
 
-## <a id="building"></a> Building
+The same **`Neural Amp Modeler.app`** also lives under **[`binaries/macos-arm64/`](binaries/macos-arm64/)** in the repo for browsing or cloning. Both the app bundle and the ZIP are refreshed when someone runs a **Release** standalone build on an **arm64-only** macOS CMake configuration (see *Building* below).
+
+---
+
+## Building (macOS — Apple Silicon / arm64)
+
+**Supported and tested here:** macOS **arm64**, **Release** builds via CMake. Other platforms and architectures have **not** been compiled or validated in this fork.
+
+Prerequisites: Xcode command-line tools (or Xcode), CMake ≥ 3.15.
 
 ```bash
-git clone https://github.com/tr3m/nam-juce
+git clone <your-repo-url> nam-juce
 cd nam-juce
+
+# Fresh build directory (example)
+cmake -S . -B build-release-arm -DCMAKE_BUILD_TYPE=Release
+cmake --build build-release-arm --config Release
 ```
 
-Git sumbodules dont need to be initialized manually. CMake will initialize the appropriate submodules depending on the defined flags.
+On Apple Silicon, this project’s CMake prefers **`CMAKE_OSX_ARCHITECTURES=arm64`** when the host reports ARM hardware.
 
-### <a id="building-windows"></a> Windows
+Artifacts (names may match your generator):
 
-```bash
-cmake -B build
-cmake --build build --config Release -j %NUMBER_OF_PROCESSORS% 
-```
-The `%NUMBER_OF_PROCESSORS%` environment variable is for cmd. The Powershell/New Windows Terminal equivalent is `$ENV:NUMBER_OF_PROCESSORS`.
+- Standalone: `build-release-arm/NEURAL_AMP_MODELER_artefacts/Release/Standalone/`
+- AU / VST3: under `build-release-arm/NEURAL_AMP_MODELER_artefacts/Release/`
 
-### <a id="building-macos"></a> MacOS
+**Note:** For manual audio checks on Apple Silicon, prefer **Release** (or your usual ARM Release artefact). Debug standalone behavior may differ for real-time audio.
 
-```bash
-cmake -B build
-cmake --build build -- -j $(sysctl -n hw.physicalcpu)
-```
+---
 
-### <a id="building-linux"></a> Linux
+## Optional CMake flags
 
-```bash
-cmake -B build
-cmake --build build -- -j $(nproc)
-```
+- **`USE_NATIVE_ARCH=1`** — On x86_64 hosts this can enable extra CPU flags; on macOS **arm64** the project skips the x86-only tuning. Safe to leave off for typical Apple Silicon builds.
 
-Linux dependencies for JUCE can be found [here](https://github.com/juce-framework/JUCE/blob/master/docs/Linux%20Dependencies.md). Keep in mind that the packages they list are meant for Ubuntu, so you might have to do your own research depending on your distro.
+---
 
-### <a id="optional-flags"></a> Optional CMake Flags
+## Plugin formats
 
-* `-DUSE_NATIVE_ARCH=1`
-    * Enables processor-specific optimizations for modern x64 processors.
-* `-DCMAKE_PREFIX_PATH=<PATH/TO/JUCE>`
-    * Use a global installation of JUCE instead of the repo submodule.
-* `-DASIO_PATH=<PATH_TO_ASIO_SDK>` (Windows only)
-    * Enables ASIO support for the Standalone Application.
+- AU  
+- VST3  
+- Standalone  
 
-<br/>
+---
 
-The resulting binaries can be found under <u>`build/NEURAL_AMP_MODELER_artefacts/Release/`</u>.
+## Models and IRs
 
-## <a id="supported-platforms"></a> Supported Platforms
+Community captures and impulse responses are widely shared on sites such as [Tone3000](https://www.tone3000.com/).
 
-- Windows
-- MacOS
-- Linux
+---
 
-## <a id="suppoprted-formats"></a> Supported Formats
+## Windows / Linux / Intel macOS
 
-- VST3
-- AU
-- Standalone Application
+There are **no** maintained build or install instructions for Windows or Linux in this README, and **no** Chocolatey or other package-manager claims. If you build on another OS or CPU, expect to adjust toolchain paths and JUCE dependencies yourself; issues on untested platforms are not guaranteed to be reproduced here.
 
-<br/>
+---
 
-Note: The Standalone application for Windows doesn't support ASIO by default. For ASIO support a path to Steingberg's ASIO SDK needs to be provided by using the `ASIO_PATH` flag with CMake.
+## License
 
-More plugin formats like LV2 and Legacy VST can be built by providing the appropriate SDK paths and setting the corresponding JUCE flags in the main `CMakeLists.txt` file.
-
-## <a id="getting-models"></a> Getting Models
-You can find Models and Impulse Responses shared by the community on [ToneHunt](https://tonehunt.org).
+See [LICENSE.txt](LICENSE.txt).

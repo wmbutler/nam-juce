@@ -6,6 +6,9 @@ file(GLOB SRC_FILES
 )
 
 juce_add_binary_data(BinaryData SOURCES
+    Fonts/Michroma.ttf
+    Fonts/ShareTechMono.ttf
+    Fonts/Rajdhani.ttf
     knob.png
     background.png
     buttonpushed.png

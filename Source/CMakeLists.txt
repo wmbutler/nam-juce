@@ -7,27 +7,20 @@ PRIVATE
     StatusedTrigger.h
     ToneStack.cpp
     ToneStack.h
-    NamEditor.h
-    NamEditor.cpp
     PluginEditor.cpp
     PluginEditor.h
     PluginProcessor.cpp
     PluginProcessor.h
-    MyLookAndFeel.h
-    AssetManager.h
-    EqEditor.cpp
-    EqEditor.h
     EqProcessor.cpp
     EqProcessor.h
-    TopBarComponent.cpp
-    TopBarComponent.h
     DoublerProcessor.h
     architecture.hpp
 )
+
+add_subdirectory(NamUi)
 
 add_subdirectory(CustomStandaloneWindow)
 include_directories(CustomStandaloneWindow)
 
 add_subdirectory(PresetManager)
 include_directories(PresetManager)
-

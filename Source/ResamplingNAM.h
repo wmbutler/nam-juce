@@ -106,6 +106,9 @@ public:
 
     int GetLatency() const { return NeedToResample() ? mResampler.GetLatency() : 0; };
 
+    /** True when the model core runs at a different rate and the Lanczos wrapper is active. */
+    bool usesInternalResampling() const noexcept { return GetExpectedSampleRate() != GetEncapsulatedSampleRate(); }
+
     void Reset(const double sampleRate, const int maxBlockSize)
     {
         mExpectedSampleRate = sampleRate;

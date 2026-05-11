@@ -15,6 +15,9 @@
 class NeuralAmpModeler
 {
 public:
+    /** WaveNet/ConvNet reset work buffers when num_frames changes; fixed quantum avoids variable host block sizes. */
+    static constexpr int kNamInferenceFrames = 32;
+
     NeuralAmpModeler();
     ~NeuralAmpModeler();
 
@@ -45,8 +48,8 @@ public:
     StatusedTrigger* getTrigger() { return &mNoiseGateTrigger; };
 
 private:
-    double sampleRate;
-    int samplesPerBlock;
+    double sampleRate{48000.0};
+    int samplesPerBlock{512};
     juce::AudioBuffer<float> outputBuffer;
 
     // Parameter Pointers

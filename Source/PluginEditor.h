@@ -2,34 +2,21 @@
 
 #include <JuceHeader.h>
 #include "PluginProcessor.h"
-#include "NamEditor.h"
+#include "NamUi/NamUiEditor.h"
 
 //==============================================================================
-/**
- */
-class NamJUCEAudioProcessorEditor : public juce::AudioProcessorEditor, public juce::Timer, public juce::Slider::Listener
+class NamJUCEAudioProcessorEditor : public juce::AudioProcessorEditor
 {
 public:
     NamJUCEAudioProcessorEditor(NamJUCEAudioProcessor&);
     ~NamJUCEAudioProcessorEditor() override;
 
-    //==============================================================================
-    void paint (juce::Graphics&) override;
-    void resized () override;
-    void timerCallback ();
-    void sliderValueChanged (juce::Slider* slider);
-
-    void setPluginSize (bool makeSmall);
+    void paint(juce::Graphics&) override;
+    void resized() override;
+    bool keyPressed(const juce::KeyPress& key) override;
 
 private:
-    NamEditor namEditor;
-
-    std::unique_ptr<juce::ImageButton> resizeButton;
-    std::unique_ptr<juce::ToggleButton> hiddenResizeToggle;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> resizeToggleAttachment;
-
-    juce::Image arrowExpand = juce::ImageFileFormat::loadFrom(BinaryData::arrowexpand_png, BinaryData::arrowexpand_pngSize);
-    juce::Image arrowContract = juce::ImageFileFormat::loadFrom(BinaryData::arrowcontract_png, BinaryData::arrowcontract_pngSize);
+    NamUi::NamUiEditor namUiEditor;
 
     NamJUCEAudioProcessor& audioProcessor;
 
