@@ -30,7 +30,7 @@ endif()
 set(NAM_GENERATED_INCLUDE_ROOT "${CMAKE_CURRENT_BINARY_DIR}/generated")
 file(MAKE_DIRECTORY "${NAM_GENERATED_INCLUDE_ROOT}/NAM")
 configure_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/Modules/NeuralAmpModelerCore/NAM/version.h.in"
+    "${CMAKE_CURRENT_SOURCE_DIR}/CMake/NAM/version.h.in"
     "${NAM_GENERATED_INCLUDE_ROOT}/NAM/version.h"
     @ONLY)
 
