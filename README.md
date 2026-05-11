@@ -61,7 +61,7 @@ NAM/
 
 Download the latest macOS arm64 ZIP from GitHub Releases:
 
-**[Download Neural Amp Modeler (macOS arm64)](https://github.com/wmbutler/nam-juce/releases/latest/download/NeuralAmpModeler-macOS-arm64.zip)**
+**[Download Neural Amp Modeler (macOS arm64)](https://github.com/wmbutler/nam-juce/releases/)**
 
 Unpack the archive and open **`Neural Amp Modeler.app`** (you may need **right-click → Open** the first time for Gatekeeper).
 
