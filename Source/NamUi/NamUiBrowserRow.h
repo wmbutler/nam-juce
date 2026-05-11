@@ -32,7 +32,7 @@ public:
     void setBrowseTotal(int totalOrZeroForItemsSize);
     int getBrowseTotal() const noexcept { return effectiveTotal(); }
 
-    /** When false, CAPTURE / IR control is hidden (collection rows, or IR row when full rig). */
+    /** When false, CAPTURE / IR control is hidden (collection rows, or IR row locked by gear type). */
     void setShowActivateControl(bool show);
     bool showActivateControl() const noexcept { return showActivate; }
 

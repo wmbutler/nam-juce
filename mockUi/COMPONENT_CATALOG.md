@@ -57,7 +57,7 @@ Living index for [`index.jsx`](./index.jsx). Update the **JUCE mapping** column 
 ## Composition notes (from mock)
 
 - **Browser**: The header describes **five** stacked rows (capture collection, capture file, IR collection, IR file, plus related semantics). The inline layout comment near `NAMPlugin` mentions three rows; treat the **long header block** as authoritative for row count and locking.
-- **full_rig**: Disables IR navigation + changes copy (“CAB BAKED IN”); state is `loadedCaptureType === "full_rig"` in `NAMPlugin`.
+- **gear_type with cab**: `metadata.gear_type` values `amp_cab` and `amp_pedal_cab` disable IR navigation and show NAM-style copy (“AMP CAB” / “AMP PEDAL CAB”); state is derived from `loadedCaptureType` in `NAMPlugin`.
 - **Parameters**: Mock knobs use 0…1; real ranges live in `NeuralAmpModeler::createParameters` / `NamJUCEAudioProcessor::createParameters` — document IDs in the table below as you wire attachments.
 
 ## Parameter / state crosswalk (fill as you go)

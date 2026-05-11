@@ -1,0 +1,13 @@
+---
+description: Use the maintained macOS arm64 build script for binaries updates
+alwaysApply: true
+---
+
+# Build To Binaries
+
+When asked to build, refresh, verify, or update the committed macOS standalone binary:
+
+- Use `python3 Scripts/build_macos_arm_binary.py` by default.
+- This builds the Release standalone target and relies on the CMake post-build hook to refresh `binaries/macos-arm64/Neural Amp Modeler.app` and `binaries/macos-arm64/NeuralAmpModeler-macOS-arm64.zip`.
+- Do not use `Scripts/generate_mac_installer.py` for this purpose; it is installer packaging code from the older fork and is not the maintained build-to-`binaries` path.
+- On Apple Silicon, prefer this Release arm64 artefact for manual audio checks.

@@ -29,6 +29,8 @@ public:
 
     bool isModelLoaded ();
     void clearModel ();
+    const std::string& getLastGearType () const noexcept { return lastGearType; }
+    bool isLastModelCabBakedIn () const noexcept { return lastModelCabBakedIn; }
 
     void createParameters (std::vector<std::unique_ptr<juce::RangedAudioParameter>>& parameters);
     void hookParameters (juce::AudioProcessorValueTreeState&);
@@ -61,6 +63,8 @@ private:
 
     bool modelLoaded{false};
     bool shouldRemoveModel{false};
+    std::string lastGearType;
+    bool lastModelCabBakedIn{false};
 
     std::unique_ptr<ResamplingNAM> mModel, mStagedModel;
     std::unique_ptr<dsp::tone_stack::AbstractToneStack> mToneStack;

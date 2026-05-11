@@ -3,7 +3,7 @@ name: nam-juce-mockui-juce
 description: >-
   Implements or ports the Neural Amp Modeler JUCE UI from mockUi/index.jsx with
   correct NAM semantics, APVTS ranges, and modular components. Use when editing
-  nam-juce GUI, mockUi, NamUiEditor, preset/browser flows, capture vs IR vs full_rig,
+  nam-juce GUI, mockUi, NamUiEditor, preset/browser flows, capture vs IR vs gear_type locking,
   or converting React layout to JUCE FlexBox/resized(). On Apple Silicon, build the
   ARM binary explicitly for audio testing — Debug builds fail audio reproduction here.
 ---
@@ -12,13 +12,13 @@ description: >-
 
 ## Read mockUi in three layers
 
-1. **File header (~lines 1–130)** in `mockUi/index.jsx`: authoritative rules — `~/NAM/` layout, preset JSON, persistence layers, signal flow, **full rig IR locking**, capture-type detection order, color tokens (`C`).
+1. **File header (~lines 1–130)** in `mockUi/index.jsx`: authoritative rules — `~/NAM/` layout, preset JSON, persistence layers, signal flow, **gear_type-based IR locking**, NAM metadata detection, color tokens (`C`).
 2. **Per-component comments**: intended JUCE counterpart (LED, SoftButton, knobs, browser rows). Prefer over inferring from CSS alone.
 3. **JSX implementation**: flex layout and React state (`isFullRig`, `namDirSet`, group actives). Maps to `resized()` + component state, not to DSP unless stated.
 
 ## Build and test (Apple Silicon)
 
-- **Build the ARM binary explicitly** for manual audio testing (e.g. Release or the artefact you use on arm64). **Debug builds fail for audio reproduction** in this project — do not rely on Debug standalone/plugin runs to validate sound or real-time behavior.
+- **Build the ARM binary explicitly** for manual audio testing with `python3 Scripts/build_macos_arm_binary.py`, which refreshes `binaries/macos-arm64/`. **Debug builds fail for audio reproduction** in this project — do not rely on Debug standalone/plugin runs to validate sound or real-time behavior.
 
 ## JUCE API discipline
 
@@ -31,10 +31,11 @@ description: >-
 |------|--------|
 | **Capture** | `.nam` model under `Captures/` |
 | **IR** | `.wav` cab impulse under `IR/` |
-| **amp_head** | IR slot is meaningful; separate cab IR expected |
-| **full_rig** | Cab baked into model — UI locks IR rows (“CAB BAKED IN”); preset IR fields ignored |
+| **`metadata.gear_type`** | Authoritative NAM file metadata for IR eligibility |
+| **`amp_cab` / `amp_pedal_cab`** | Cab is included — UI locks IR rows using NAM-style labels (“AMP CAB”, “AMP PEDAL CAB”); preset IR fields ignored at runtime |
+| **`amp`, `pedal_amp`, `preamp`, `pedal`, `studio`** | IR slot remains available; missing or unknown gear type also leaves IR available |
 
-**Spec vs code:** `full_rig` / sidecar detection are fully spelled out in the mock header; **verify** processor/editor actually implements them before relying on C++ behavior — extend backend if the mock is the target.
+**Spec vs code:** production behavior should parse `.nam` JSON and read `metadata.gear_type`. Do **not** persist custom `full_rig` / `amp_head` labels or `capture_type` in preset JSON; use internal booleans only for UI branching.
 
 ## Layout: flex → JUCE
 

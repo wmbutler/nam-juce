@@ -1,0 +1,12 @@
+---
+description: Treat mockUi as archived reference, not active source of truth
+alwaysApply: true
+---
+
+# mockUi Is Archived
+
+The React prototype in `mockUi/` was useful while porting the UI, but the JUCE implementation is now the source of truth.
+
+- Do not keep `mockUi/index.jsx`, `mockUi/COMPONENT_CATALOG.md`, or related mock docs in sync with new product/code changes by default.
+- Do not update `mockUi` as part of normal JUCE, DSP, preset, browser, or UI behavior changes unless the user explicitly asks for mock/prototype updates.
+- Prefer documenting current behavior in production code, project rules, or focused docs rather than treating `mockUi` comments as authoritative.

@@ -16,6 +16,9 @@ public:
 
 private:
     String versionString;
+    HyperlinkButton authorLink { "wmbutler/nam-juce", URL("https://github.com/wmbutler/nam-juce") };
+    HyperlinkButton namJuceLink { "Tr3m/nam-juce", URL("https://github.com/Tr3m/nam-juce") };
+    HyperlinkButton namCoreLink { "sdatkinson/NeuralAmpModelerCore", URL("https://github.com/sdatkinson/NeuralAmpModelerCore") };
     TextButton okButton { "OK" };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AboutDialogComponent)

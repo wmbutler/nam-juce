@@ -1,6 +1,38 @@
 #include "NeuralAmpModeler.h"
+#include <algorithm>
+#include <cctype>
 #include <filesystem>
 #include <iostream>
+
+namespace
+{
+std::string normaliseGearType(std::string gearType)
+{
+    std::transform(gearType.begin(), gearType.end(), gearType.begin(), [](unsigned char c)
+    {
+        return (char) std::tolower(c);
+    });
+
+    return gearType;
+}
+
+std::string readGearType(const nam::dspData& dspData)
+{
+    if (!dspData.metadata.is_object())
+        return {};
+
+    const auto gearType = dspData.metadata.find("gear_type");
+    if (gearType == dspData.metadata.end() || !gearType->is_string())
+        return {};
+
+    return normaliseGearType(gearType->get<std::string>());
+}
+
+bool gearTypeHasCab(const std::string& gearType)
+{
+    return gearType == "amp_cab" || gearType == "amp_pedal_cab";
+}
+} // namespace
 
 NeuralAmpModeler::NeuralAmpModeler()
     : sampleRate(48000.0), samplesPerBlock(512)
@@ -112,22 +144,28 @@ bool NeuralAmpModeler::loadModel(const std::string modelPath)
     try
     {
         auto dspPath = std::filesystem::u8path(modelPath);
-        std::unique_ptr<nam::DSP> model = nam::get_dsp(dspPath);
+        nam::dspData dspData;
+        std::unique_ptr<nam::DSP> model = nam::get_dsp(dspPath, dspData);
         std::unique_ptr<ResamplingNAM> temp = std::make_unique<ResamplingNAM>(std::move(model), this->sampleRate);
 
         const int resetBlock = juce::jmax(32, this->samplesPerBlock);
         temp->Reset(this->sampleRate, resetBlock);
 
         mStagedModel = std::move(temp);
+        lastGearType = readGearType(dspData);
+        lastModelCabBakedIn = gearTypeHasCab(lastGearType);
 
         return true;
     }
-    catch (std::runtime_error& e)
+    catch (const std::exception& e)
     {
         if (mStagedModel != nullptr)
         {
             mStagedModel = nullptr;
         }
+
+        lastGearType.clear();
+        lastModelCabBakedIn = false;
 
         std::cout << "woops" << std::endl;
         std::cerr << "Failed to read DSP module" << std::endl;
@@ -145,6 +183,8 @@ bool NeuralAmpModeler::isModelLoaded()
 void NeuralAmpModeler::clearModel()
 {
     this->shouldRemoveModel = true;
+    lastGearType.clear();
+    lastModelCabBakedIn = false;
 }
 
 void NeuralAmpModeler::applyDSPStaging()

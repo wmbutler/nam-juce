@@ -72,6 +72,9 @@ public:
     const std::string getLastIrName() { return lastIrName; };
     const std::string getLastModelSearchDirectory() { return lastModelSerachDir; };
     const std::string getLastIrSearchDirectory() { return lastIrSerachDir; };
+    const std::string getLastModelGearType() const { return myNAM.getLastGearType(); };
+    juce::String getLastModelGearTypeDisplayName() const;
+    bool isLastModelCabBakedIn() const noexcept { return myNAM.isLastModelCabBakedIn(); };
 
     foleys::LevelMeterSource& getMeterInSource() { return meterInSource; }
     foleys::LevelMeterSource& getMeterOutSource() { return meterOutSource; }

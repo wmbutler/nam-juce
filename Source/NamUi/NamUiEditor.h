@@ -46,7 +46,6 @@ public:
         juce::String name;
         juce::String capturePath;
         juce::String irPath;
-        juce::String captureType { "amp_head" };
         juce::String irCollection;
         NamUiMainControlsStrip::ControlState controls;
         bool captureActive { false };

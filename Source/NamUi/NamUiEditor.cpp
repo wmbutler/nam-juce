@@ -141,26 +141,6 @@ static juce::StringArray collectionNames(const std::vector<juce::File>& collecti
     return names;
 }
 
-static bool isFullRigCapture(const juce::File& captureFile)
-{
-    const auto sidecar = captureFile.withFileExtension(".json");
-
-    if (sidecar.existsAsFile())
-    {
-        if (auto parsed = juce::JSON::parse(sidecar); parsed.isObject())
-        {
-            if (auto* object = parsed.getDynamicObject())
-                if (object->getProperty("type").toString().equalsIgnoreCase("full_rig"))
-                    return true;
-        }
-    }
-
-    const auto parentName = captureFile.getParentDirectory().getFileName();
-    return parentName.containsIgnoreCase("Full Rig")
-        || parentName.containsIgnoreCase("Combo")
-        || parentName.containsIgnoreCase(" with ");
-}
-
 static juce::String readToneDirectoryFromStandaloneProperties()
 {
     juce::PropertiesFile::Options options;
@@ -239,7 +219,6 @@ static bool sameSnapshot(const NamUiEditor::PresetSnapshot& a, const NamUiEditor
 {
     return a.capturePath == b.capturePath
         && a.irPath == b.irPath
-        && a.captureType == b.captureType
         && a.irCollection == b.irCollection
         && sameControlState(a.controls, b.controls)
         && a.captureActive == b.captureActive
@@ -263,7 +242,6 @@ static bool readPresetSnapshot(const juce::File& presetFile, NamUiEditor::Preset
     snapshot.name = stringProperty(*object, "name", snapshot.id);
     snapshot.capturePath = stringProperty(*object, "capture");
     snapshot.irPath = stringProperty(*object, "ir");
-    snapshot.captureType = stringProperty(*object, "capture_type", "amp_head");
     snapshot.irCollection = stringProperty(*object, "ir_collection");
     snapshot.controls.bass = doubleProperty(*object, "bass", 0.5);
     snapshot.controls.mid = doubleProperty(*object, "mid", 0.5);
@@ -286,7 +264,6 @@ static juce::var presetSnapshotToVar(const NamUiEditor::PresetSnapshot& snapshot
     object->setProperty("name", snapshot.name);
     object->setProperty("capture", snapshot.capturePath);
     object->setProperty("ir", snapshot.irPath);
-    object->setProperty("capture_type", snapshot.captureType);
     object->setProperty("ir_collection", snapshot.irCollection);
     object->setProperty("bass", snapshot.controls.bass);
     object->setProperty("mid", snapshot.controls.mid);
@@ -837,7 +814,6 @@ NamUiEditor::PresetSnapshot NamUiEditor::makeCurrentPresetSnapshot(juce::String 
     snapshot.controls = makeMainControlStateFromProcessor();
     snapshot.captureActive = captureActive;
     snapshot.irActive = irActive;
-    snapshot.captureType = loadedCaptureIsFullRig ? "full_rig" : "amp_head";
 
     if (namRootDirectory.isDirectory() && captureLoaded && !captureFiles.empty())
         snapshot.capturePath = normalisedRelativePath(namRootDirectory, captureFiles[(size_t) captureFileIndex]);
@@ -884,20 +860,32 @@ void NamUiEditor::applyPresetSnapshot(const PresetSnapshot& snapshot)
         }
     };
 
+    bool selectedCaptureHasCab = false;
+
     if (snapshot.capturePath.isNotEmpty())
     {
         const auto captureFile = resolveRelativePath(namRootDirectory, snapshot.capturePath);
         selectFile(captureFile, captureCollectionDirs, "*.nam", captureCollectionIndex, captureFileIndex, captureFiles);
+
+        if (captureFile.existsAsFile())
+        {
+            if (audioProcessor.getLastModelPath() != captureFile.getFullPathName().toStdString())
+                audioProcessor.loadNamModel(captureFile);
+
+            selectedCaptureHasCab = audioProcessor.isLastModelCabBakedIn();
+        }
     }
 
-    if (snapshot.irPath.isNotEmpty() && !snapshot.captureType.equalsIgnoreCase("full_rig"))
+    loadedCaptureIsFullRig = selectedCaptureHasCab;
+
+    if (snapshot.irPath.isNotEmpty() && !selectedCaptureHasCab)
     {
         const auto irFile = resolveRelativePath(namRootDirectory, snapshot.irPath);
         selectFile(irFile, irCollectionDirs, "*.wav", irCollectionIndex, irFileIndex, irFiles);
     }
 
     captureActive = snapshot.captureActive;
-    irActive = snapshot.captureType.equalsIgnoreCase("full_rig") ? false : snapshot.irActive;
+    irActive = selectedCaptureHasCab ? false : snapshot.irActive;
     audioProcessor.setCaptureActive(captureActive);
     audioProcessor.setIrActive(irActive);
     setParameterValue(audioProcessor.apvts, "CAB_ON_ID", irActive ? 1.f : 0.f);
@@ -1010,10 +998,11 @@ void NamUiEditor::refreshBrowserRows()
         captureLoaded = true;
         loadedCaptureCollectionIndex = captureCollectionIndex;
         loadedCaptureFileIndex = captureFileIndex;
-        loadedCaptureIsFullRig = isFullRigCapture(selectedCapture);
 
         if (audioProcessor.getLastModelPath() != selectedCapture.getFullPathName().toStdString())
             audioProcessor.loadNamModel(selectedCapture);
+
+        loadedCaptureIsFullRig = audioProcessor.isLastModelCabBakedIn();
     }
 
     if (loadedCaptureIsFullRig || irFiles.empty())
@@ -1060,8 +1049,9 @@ void NamUiEditor::refreshBrowserRows()
     browserCaptureFile.setActivateToggleState(captureActive, juce::dontSendNotification);
 
     const bool irLocked = loadedCaptureIsFullRig;
+    const auto lockedIrLabel = audioProcessor.getLastModelGearTypeDisplayName();
     configureRow(browserIrCollection,
-                 irLocked ? juce::StringArray("CAB BAKED IN")
+                 irLocked ? juce::StringArray(lockedIrLabel)
                           : (irCollectionDirs.empty() ? juce::StringArray("No IR Collections")
                                                       : collectionNames(irCollectionDirs, irRoot)),
                  irLocked ? 0 : irCollectionIndex,
@@ -1069,7 +1059,7 @@ void NamUiEditor::refreshBrowserRows()
                  false);
 
     configureRow(browserIrFile,
-                 irLocked ? juce::StringArray("CAB BAKED IN")
+                 irLocked ? juce::StringArray(lockedIrLabel)
                           : (irFiles.empty() ? juce::StringArray("No IR Files")
                                              : fileNames(irFiles)),
                  irLocked ? 0 : irFileIndex,

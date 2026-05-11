@@ -79,9 +79,12 @@ Prerequisites: Xcode command-line tools (or Xcode), CMake ≥ 3.15.
 git clone <your-repo-url> nam-juce
 cd nam-juce
 
-# Fresh build directory (example)
-cmake -S . -B build-release-arm -DCMAKE_BUILD_TYPE=Release
-cmake --build build-release-arm --config Release
+# Preferred: build Release standalone and refresh binaries/macos-arm64/
+python3 Scripts/build_macos_arm_binary.py
+
+# Equivalent manual CMake commands
+cmake -S . -B build-release-arm -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=arm64
+cmake --build build-release-arm --config Release --target NEURAL_AMP_MODELER_Standalone
 ```
 
 On Apple Silicon, this project’s CMake prefers **`CMAKE_OSX_ARCHITECTURES=arm64`** when the host reports ARM hardware.

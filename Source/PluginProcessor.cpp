@@ -161,10 +161,9 @@ void NamJUCEAudioProcessor::loadFromPreset(juce::String modelPath, juce::String 
         }
         else
         {
-            myNAM.loadModel(modelPath.toStdString());
+            namModelLoaded = myNAM.loadModel(modelPath.toStdString());
             lastModelPath = modelPath.toStdString();
             lastModelName = fileCheck.getFileNameWithoutExtension().toStdString();
-            namModelLoaded = true;
         }
     }
     else
@@ -235,6 +234,11 @@ bool NamJUCEAudioProcessor::getTriggerStatus()
 bool NamJUCEAudioProcessor::getNamModelStatus()
 {
     return this->namModelLoaded;
+}
+
+juce::String NamJUCEAudioProcessor::getLastModelGearTypeDisplayName() const
+{
+    return juce::String(myNAM.getLastGearType()).replaceCharacter('_', ' ').toUpperCase();
 }
 
 void NamJUCEAudioProcessor::clearNAM()

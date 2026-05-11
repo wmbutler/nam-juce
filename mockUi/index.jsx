@@ -23,24 +23,22 @@
  *   Row 1 — Capture Collection: scans ~/NAM/Captures/ for subdirectories
  *   Row 2 — Capture file: scans current collection folder for .nam files
  *            CAPTURE button: first press = load + activate. Subsequent = toggle bypass.
- *            On load, detect capture type from sidecar .json (Tone3000 download) or
- *            folder naming convention. Store type as "amp_head" | "full_rig".
+ *            On load, parse the .nam JSON and read metadata.gear_type.
  *   Row 3 — IR Collection: scans ~/NAM/IR/ for subdirectories
  *   Row 4 — IR file: scans current IR collection folder for .wav files
  *            IR (CAB) button: first press = load + activate. Subsequent = toggle bypass.
- *   FULL RIG LOCKING: When a full_rig capture is loaded, rows 3 and 4 are both
- *            disabled simultaneously. Navigation arrows hidden, text shows "CAB BAKED IN",
- *            IR (CAB) button absent. Unlocks when an amp_head capture is loaded.
+ *   GEAR TYPE LOCKING: When metadata.gear_type is amp_cab or amp_pedal_cab,
+ *            rows 3 and 4 are both disabled simultaneously. Navigation arrows hidden,
+ *            text shows the NAM gear type (e.g. "AMP CAB" or "AMP PEDAL CAB"),
+ *            IR (CAB) button absent. Unlocks for gear types without a cab.
  *   NAM DIR NOT SET: All rows show "File › Settings → Set NAM Directory" centered,
  *            arrows and buttons hidden, until directory is configured.
  *
- * CAPTURE TYPE DETECTION (in order of precedence):
- *   1. Sidecar .json file alongside the .nam file (written on Tone3000 download)
- *      e.g. BE-100 Crunch Channel.json: { "type": "amp_head" }
- *   2. Folder naming convention (fallback for manually downloaded files):
- *      Parent folder contains "Full Rig" or "Combo" → type = full_rig
- *      Otherwise → type = amp_head (safe default, user can always bypass IR manually)
- *   3. If type cannot be determined → treat as amp_head, IR rows remain available
+ * GEAR TYPE DETECTION:
+ *   1. Parse the .nam file directly as JSON and read metadata.gear_type.
+ *   2. amp_cab and amp_pedal_cab include a cab, so IR rows lock.
+ *   3. amp, pedal_amp, preamp, pedal, and studio leave IR rows available.
+ *   4. If gear_type is missing or unknown, leave IR rows available.
  *
  * PRESET FILE FORMAT (~/NAM/Presets/):
  *   manifest.json — ordered list of presets, controls PREV/NEXT order:
@@ -55,7 +53,6 @@
  *     "name": "Marshall Plexi Hot",
  *     "capture": "Captures/Friedman Amplification/BE-100 Crunch Channel.nam",
  *     "ir": "IR/Celestion Cabinets/V30 4x12 — SM57.wav",
- *     "capture_type": "amp_head",
  *     "ir_collection": "Celestion Cabinets",
  *     "bass": 0.55, "mid": 0.45, "treble": 0.6,
  *     "gate_open": 0.0, "gate_close": 1.0,
@@ -63,8 +60,8 @@
  *     "tone_active": true, "gate_active": false,
  *     "ir_active": true, "capture_active": true
  *   }
- *   Note: if capture_type = "full_rig", ir and ir_collection are ignored on load.
- *   IR rows will be locked to "CAB BAKED IN" regardless of stored values.
+ *   Note: presets do not store our own capture type. On load, the .nam file's
+ *   metadata.gear_type determines whether ir and ir_collection should be ignored.
  *
  *   ID generation: short UUID or timestamp-based hash at creation time.
  *   Use juce::Uuid().toDashedString().substring(0,8) or similar.
@@ -106,7 +103,7 @@
  *   Deep link redirect: register custom URL scheme e.g. nam://callback
  *   Captures = "Captures" in Tone3000 terminology (.nam files)
  *   IRs = "Impulse Responses" in Tone3000 terminology (.wav files)
- *   Full Rig captures include cab — IR slot should be bypassed/locked when loaded
+ *   Captures whose metadata.gear_type includes a cab should bypass/lock the IR slot
  *   Amp Head captures require a separate IR for the cab simulation
  *
  * PRESET SYSTEM:
@@ -648,11 +645,11 @@ function PresetDisplay({ name, onSave, onRename, onNew, onDelete, onPrev, onNext
 // Row 1 (Capture Collection): no active button. Scans ~/NAM/Captures/ for subdirectories.
 // Row 2 (Capture file): CAPTURE button. Scans current collection for .nam files.
 //   First press = load + activate. Subsequent = toggle bypass.
-//   On load, detect type via sidecar .json or folder naming. Store as "amp_head"|"full_rig".
+  //   On load, parse each .nam file's metadata.gear_type. Do not store our own capture type.
 // Row 3 (IR Collection): no active button. Scans ~/NAM/IR/ for subdirectories.
-//   Locked (disabled=true, text="CAB BAKED IN") when full_rig capture is loaded.
+  //   Locked (disabled=true, text="AMP CAB" or "AMP PEDAL CAB") when gear_type includes a cab.
 // Row 4 (IR file): IR (CAB) button. Scans current IR collection for .wav files.
-//   Locked same as Row 3 when full_rig loaded.
+  //   Locked same as Row 3 when gear_type includes a cab.
 //   First press = load + activate. Subsequent = toggle bypass.
 // All rows: when NAM dir not set, show "File › Settings → Set NAM Directory" centered.
 // Navigation: ◀ ▶ arrows page through items with wrap-around.
@@ -1268,7 +1265,10 @@ export default function NAMPlugin() {
   const [captureActive, setCaptureActive] = useState(false);
 
   // ── Derived constants (depend on state above) ─────────────────────────────
-  const isFullRig   = loadedCaptureType === "full_rig";
+  const gearTypeHasCab = (type) => type === "amp_cab" || type === "amp_pedal_cab";
+  const gearTypeLabel  = (type) => (type ?? "").replace(/_/g, " ").toUpperCase();
+  const isFullRig      = gearTypeHasCab(loadedCaptureType);
+  const lockedIrLabel  = gearTypeLabel(loadedCaptureType);
   const NAM_NOT_SET = "File › Settings → Set NAM Directory";
 
   // Preset data — id-keyed object simulating the JSON file store on disk.
@@ -1277,12 +1277,12 @@ export default function NAMPlugin() {
   // Both must stay in sync: SAVE NEW writes a new file + appends to manifest,
   // WRITE updates [id].json, RENAME updates name in both, DELETE removes from both.
   const INITIAL_PRESETS = [
-    { id: "p1", name: "BE-100 Crunch Channel",  collIdx: 1, captIdx: 0, captType: "amp_head",  irCollIdx: 0, irIdx: 0, bass: 0.6,  mid: 0.45, treble: 0.55, gate: 0,    gateHigh: 1,    inGain: 0.55, outGain: 0.5,  toneActive: true,  gateActive: false, irActive: true,  captureActive: true  },
-    { id: "p2", name: "Marshall Plexi — Hot",   collIdx: 2, captIdx: 1, captType: "amp_head",  irCollIdx: 2, irIdx: 1, bass: 0.7,  mid: 0.5,  treble: 0.6,  gate: 0.15, gateHigh: 0.35, inGain: 0.6,  outGain: 0.45, toneActive: true,  gateActive: true,  irActive: true,  captureActive: true  },
-    { id: "p3", name: "Fender Twin Clean",      collIdx: 0, captIdx: 2, captType: "full_rig",  irCollIdx: 0, irIdx: 0, bass: 0.5,  mid: 0.55, treble: 0.65, gate: 0,    gateHigh: 1,    inGain: 0.5,  outGain: 0.55, toneActive: true,  gateActive: false, irActive: false, captureActive: true  },
-    { id: "p4", name: "Mesa Mark IV Lead",      collIdx: 3, captIdx: 0, captType: "amp_head",  irCollIdx: 1, irIdx: 2, bass: 0.65, mid: 0.4,  treble: 0.5,  gate: 0.2,  gateHigh: 0.4,  inGain: 0.55, outGain: 0.5,  toneActive: true,  gateActive: true,  irActive: true,  captureActive: true  },
-    { id: "p5", name: "Vox AC30 Bright",        collIdx: 4, captIdx: 3, captType: "full_rig",  irCollIdx: 0, irIdx: 0, bass: 0.45, mid: 0.6,  treble: 0.7,  gate: 0,    gateHigh: 1,    inGain: 0.5,  outGain: 0.5,  toneActive: true,  gateActive: false, irActive: false, captureActive: true  },
-    { id: "p6", name: "Soldano SLO Crunch",     collIdx: 1, captIdx: 1, captType: "amp_head",  irCollIdx: 3, irIdx: 3, bass: 0.6,  mid: 0.45, treble: 0.55, gate: 0.25, gateHigh: 0.45, inGain: 0.6,  outGain: 0.45, toneActive: false, gateActive: true,  irActive: true,  captureActive: true  },
+    { id: "p1", name: "BE-100 Crunch Channel",  collIdx: 1, captIdx: 0, irCollIdx: 0, irIdx: 0, bass: 0.6,  mid: 0.45, treble: 0.55, gate: 0,    gateHigh: 1,    inGain: 0.55, outGain: 0.5,  toneActive: true,  gateActive: false, irActive: true,  captureActive: true  },
+    { id: "p2", name: "Marshall Plexi — Hot",   collIdx: 2, captIdx: 1, irCollIdx: 2, irIdx: 1, bass: 0.7,  mid: 0.5,  treble: 0.6,  gate: 0.15, gateHigh: 0.35, inGain: 0.6,  outGain: 0.45, toneActive: true,  gateActive: true,  irActive: true,  captureActive: true  },
+    { id: "p3", name: "Fender Twin Clean",      collIdx: 0, captIdx: 2, irCollIdx: 0, irIdx: 0, bass: 0.5,  mid: 0.55, treble: 0.65, gate: 0,    gateHigh: 1,    inGain: 0.5,  outGain: 0.55, toneActive: true,  gateActive: false, irActive: false, captureActive: true  },
+    { id: "p4", name: "Mesa Mark IV Lead",      collIdx: 3, captIdx: 0, irCollIdx: 1, irIdx: 2, bass: 0.65, mid: 0.4,  treble: 0.5,  gate: 0.2,  gateHigh: 0.4,  inGain: 0.55, outGain: 0.5,  toneActive: true,  gateActive: true,  irActive: true,  captureActive: true  },
+    { id: "p5", name: "Vox AC30 Bright",        collIdx: 4, captIdx: 3, irCollIdx: 0, irIdx: 0, bass: 0.45, mid: 0.6,  treble: 0.7,  gate: 0,    gateHigh: 1,    inGain: 0.5,  outGain: 0.5,  toneActive: true,  gateActive: false, irActive: false, captureActive: true  },
+    { id: "p6", name: "Soldano SLO Crunch",     collIdx: 1, captIdx: 1, irCollIdx: 3, irIdx: 3, bass: 0.6,  mid: 0.45, treble: 0.55, gate: 0.25, gateHigh: 0.45, inGain: 0.6,  outGain: 0.45, toneActive: false, gateActive: true,  irActive: true,  captureActive: true  },
   ];
   const [presetStore, setPresetStore] = useState(() =>
     Object.fromEntries(INITIAL_PRESETS.map(p => [p.id, p]))
@@ -1300,7 +1300,6 @@ export default function NAMPlugin() {
   const captureCurrentState = (name) => ({
     name,
     collIdx, captIdx, irCollIdx, irIdx,
-    captType: loadedCaptureType ?? "amp_head",
     bass, mid, treble, gate, gateHigh,
     inGain, outGain,
     toneActive, gateActive, irActive, captureActive,
@@ -1316,7 +1315,6 @@ export default function NAMPlugin() {
     inGain, outGain,
     toneActive, gateActive, irActive, captureActive,
     captureLoaded,
-    captType: loadedCaptureType,
   };
 
   const isDirty = loadedSnapshot
@@ -1337,10 +1335,11 @@ export default function NAMPlugin() {
     setCaptIdx(p.captIdx);
     setIrCollIdx(p.irCollIdx);
     setIrIdx(p.irIdx);
-    setLoadedCaptureType(p.captType);
+    const presetCaptureType = captureCollectionData[collections[p.collIdx]]?.[p.captIdx]?.type ?? "amp";
+    setLoadedCaptureType(presetCaptureType);
     setCaptureLoaded(true);
     setCaptureActive(p.captureActive);
-    setIrLoaded(p.captType !== "full_rig");
+    setIrLoaded(!gearTypeHasCab(presetCaptureType));
     setIrActive(p.irActive);
     setBass(p.bass);
     setMid(p.mid);
@@ -1358,7 +1357,6 @@ export default function NAMPlugin() {
       toneActive: p.toneActive, gateActive: p.gateActive,
       irActive: p.irActive, captureActive: p.captureActive,
       captureLoaded: true,
-      captType: p.captType,
     });
   };
 
@@ -1399,7 +1397,7 @@ export default function NAMPlugin() {
       inGain: updated.inGain, outGain: updated.outGain,
       toneActive: updated.toneActive, gateActive: updated.gateActive,
       irActive: updated.irActive, captureActive: updated.captureActive,
-      captureLoaded: true, captType: updated.captType,
+      captureLoaded: true,
     });
   };
 
@@ -1416,7 +1414,7 @@ export default function NAMPlugin() {
       inGain: preset.inGain, outGain: preset.outGain,
       toneActive: preset.toneActive, gateActive: preset.gateActive,
       irActive: preset.irActive, captureActive: preset.captureActive,
-      captureLoaded: true, captType: preset.captType,
+      captureLoaded: true,
     });
   };
 
@@ -1447,18 +1445,17 @@ export default function NAMPlugin() {
   //      → these become the collections array (one entry per subfolder)
   //   2. When collIdx changes, scan that subfolder for *.nam files
   //      → these become the captures array for that collection
-  //   3. For each .nam file, check for a sidecar .json to determine type.
-  //      Fallback: if parent folder name contains "Full Rig" or "Combo" → full_rig
+  //   3. For each .nam file, parse metadata.gear_type to determine IR eligibility.
   //   4. Reset captIdx to 0 whenever collIdx changes.
   //   All data is derived at runtime from the filesystem. Never store it statically.
   const captureCollectionData = namDirSet ? {
-    "Bogner Ecstasy":          [{ name: "Ecstasy 101B Ch3 — Hot",  type: "amp_head" }, { name: "Ecstasy 101B Ch2 — Clean", type: "amp_head" }, { name: "Shiva EL34 Crunch",        type: "amp_head" }],
-    "Friedman Amplification":  [{ name: "BE-100 Crunch Channel",   type: "amp_head" }, { name: "BE-100 Clean Bright",      type: "amp_head" }, { name: "Full Rig — BE-100 V30",    type: "full_rig" }],
-    "Marshall Amplification":  [{ name: "Full Rig — JCM800 4x12",  type: "full_rig" }, { name: "JCM800 Lead Ch",           type: "amp_head" }, { name: "Plexi 100W Hot",           type: "amp_head" }],
-    "Mesa Boogie":             [{ name: "Mark IV Lead",             type: "amp_head" }, { name: "Rectifier Modern",         type: "amp_head" }, { name: "Full Rig — Mark V 112",    type: "full_rig" }],
-    "Orange Amplifiers":       [{ name: "Full Rig — Rockerverb 50", type: "full_rig" }, { name: "AD30 Clean",               type: "amp_head" }, { name: "OR15 Crunch",              type: "amp_head" }],
-    "Peavey EVH":              [{ name: "5150 Brown Sound",         type: "amp_head" }, { name: "Full Rig — 5150 4x12",     type: "full_rig" }, { name: "5150 III Lead",            type: "amp_head" }],
-  } : { [NAM_NOT_SET]: [{ name: NAM_NOT_SET, type: "amp_head" }] };
+    "Bogner Ecstasy":          [{ name: "Ecstasy 101B Ch3 — Hot",  type: "amp" }, { name: "Ecstasy 101B Ch2 — Clean", type: "amp" }, { name: "Shiva EL34 Crunch",        type: "amp" }],
+    "Friedman Amplification":  [{ name: "BE-100 Crunch Channel",   type: "amp" }, { name: "BE-100 Clean Bright",      type: "amp" }, { name: "Full Rig — BE-100 V30",    type: "amp_cab" }],
+    "Marshall Amplification":  [{ name: "Full Rig — JCM800 4x12",  type: "amp_pedal_cab" }, { name: "JCM800 Lead Ch",           type: "amp" }, { name: "Plexi 100W Hot",           type: "amp" }],
+    "Mesa Boogie":             [{ name: "Mark IV Lead",             type: "amp" }, { name: "Rectifier Modern",         type: "amp" }, { name: "Full Rig — Mark V 112",    type: "amp_cab" }],
+    "Orange Amplifiers":       [{ name: "Full Rig — Rockerverb 50", type: "amp_cab" }, { name: "AD30 Clean",               type: "amp" }, { name: "OR15 Crunch",              type: "amp" }],
+    "Peavey EVH":              [{ name: "5150 Brown Sound",         type: "amp" }, { name: "Full Rig — 5150 4x12",     type: "amp_pedal_cab" }, { name: "5150 III Lead",            type: "amp" }],
+  } : { [NAM_NOT_SET]: [{ name: NAM_NOT_SET, type: "amp" }] };
 
   const collections = namDirSet ? Object.keys(captureCollectionData) : [NAM_NOT_SET];
   const captureData = captureCollectionData[collections[collIdx]] ?? [];
@@ -1473,7 +1470,7 @@ export default function NAMPlugin() {
   //      → these become the irItems array for that collection
   //   3. Reset irIdx to 0 whenever irCollIdx changes.
   //   All data is derived at runtime from the filesystem. Never store it statically.
-  //   IR rows remain fully locked (disabled) when a full_rig capture is loaded,
+  //   IR rows remain fully locked (disabled) when metadata.gear_type includes a cab,
   //   regardless of what the filesystem contains.
   const irCollectionData = namDirSet ? {
     "Celestion Cabinets":  ["V30 4x12 — SM57", "V30 4x12 — Off Axis", "V30 4x12 — Ribbon", "G12M 2x12 — Room"],
@@ -1618,9 +1615,9 @@ export default function NAMPlugin() {
                 if (isDifferent) {
                   setCaptureLoaded(true);
                   setCaptureActive(true);
-                  const type = captureData[captIdx]?.type ?? "amp_head";
+                  const type = captureData[captIdx]?.type ?? "amp";
                   setLoadedCaptureType(type);
-                  if (type === "full_rig") {
+                  if (gearTypeHasCab(type)) {
                     setIrActive(false);
                     setIrLoaded(false);
                   }
@@ -1634,18 +1631,18 @@ export default function NAMPlugin() {
             buttonLabel="CAPTURE"
             disabled={!namDirSet}
           />
-          {/* IR collection row — locked when full rig loaded */}
+          {/* IR collection row — locked when metadata.gear_type includes a cab */}
           <BrowserRow
-            items={isFullRig ? ["CAB BAKED IN"] : irCollections}
+            items={isFullRig ? [lockedIrLabel] : irCollections}
             index={isFullRig ? 0 : irCollIdx}
             total={isFullRig ? 1 : irCollections.length}
             onPrev={() => { if (!isFullRig) { setIrCollIdx(i => wrap(i - 1, irCollections)); setIrIdx(0); } }}
             onNext={() => { if (!isFullRig) { setIrCollIdx(i => wrap(i + 1, irCollections)); setIrIdx(0); } }}
             disabled={!namDirSet || isFullRig}
           />
-          {/* IR file row — locked when full rig loaded */}
+          {/* IR file row — locked when metadata.gear_type includes a cab */}
           <BrowserRow
-            items={isFullRig ? ["CAB BAKED IN"] : irItems}
+            items={isFullRig ? [lockedIrLabel] : irItems}
             index={isFullRig ? 0 : irIdx}
             total={isFullRig ? 1 : irItems.length}
             onPrev={() => !isFullRig && setIrIdx(i => wrap(i - 1, irItems))}
