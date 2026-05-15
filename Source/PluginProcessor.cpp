@@ -8,6 +8,7 @@
 
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include <cmath>
 
 //==============================================================================
 NamJUCEAudioProcessor::NamJUCEAudioProcessor()
@@ -26,6 +27,8 @@ NamJUCEAudioProcessor::NamJUCEAudioProcessor()
 {
     filterCuttofs[OutputFilters::LowCutF] = apvts.getRawParameterValue("LOWCUT_ID");
     filterCuttofs[OutputFilters::HighCutF] = apvts.getRawParameterValue("HIGHCUT_ID");
+    metronomeOnParameter = apvts.getRawParameterValue("METRONOME_ON_ID");
+    metronomeBpmParameter = apvts.getRawParameterValue("METRONOME_BPM_ID");
 }
 
 NamJUCEAudioProcessor::~NamJUCEAudioProcessor() {}
@@ -96,6 +99,13 @@ void NamJUCEAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock
     spec.sampleRate = sampleRate;
     spec.numChannels = getNumOutputChannels();
     spec.maximumBlockSize = samplesPerBlock;
+
+    metronomeSampleRate = sampleRate > 0.0 ? sampleRate : 44100.0;
+    samplesUntilNextMetronomeClick = 0.0;
+    metronomeClickSamplesRemaining = 0;
+    metronomeClickTotalSamples = juce::jmax(1, (int)std::round(metronomeSampleRate * 0.025));
+    metronomeClickPhase = 0.0;
+    metronomeWasOn = false;
 
     myNAM.prepare(spec);
     myNAM.hookParameters(apvts);
@@ -417,11 +427,68 @@ void NamJUCEAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
         doubler.process(buffer);
     }
 
+    mixMetronomeClick(buffer);
+
     if (outputMuted.load())
         for (auto i = 0; i < totalNumOutputChannels; ++i)
             buffer.clear(i, 0, buffer.getNumSamples());
 
     meterOutSource.measureBlock(buffer);
+}
+
+void NamJUCEAudioProcessor::mixMetronomeClick(juce::AudioBuffer<float>& buffer)
+{
+    const bool metronomeOn = metronomeOnParameter != nullptr && metronomeOnParameter->load() >= 0.5f;
+
+    if (!metronomeOn)
+    {
+        metronomeWasOn = false;
+        samplesUntilNextMetronomeClick = 0.0;
+        metronomeClickSamplesRemaining = 0;
+        return;
+    }
+
+    if (!metronomeWasOn)
+    {
+        samplesUntilNextMetronomeClick = 0.0;
+        metronomeClickSamplesRemaining = 0;
+        metronomeClickPhase = 0.0;
+        metronomeWasOn = true;
+    }
+
+    const auto bpm = juce::jlimit(40.0, 240.0, metronomeBpmParameter != nullptr ? (double)metronomeBpmParameter->load() : 120.0);
+    const auto samplesPerBeat = metronomeSampleRate * 60.0 / bpm;
+    const auto phaseStep = juce::MathConstants<double>::twoPi * 1800.0 / metronomeSampleRate;
+    const auto gain = juce::Decibels::decibelsToGain(-15.0f);
+    const int numChannels = buffer.getNumChannels();
+
+    if (numChannels <= 0)
+        return;
+
+    for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
+    {
+        if (samplesUntilNextMetronomeClick <= 0.0)
+        {
+            metronomeClickSamplesRemaining = metronomeClickTotalSamples;
+            metronomeClickPhase = 0.0;
+            samplesUntilNextMetronomeClick += samplesPerBeat;
+        }
+
+        if (metronomeClickSamplesRemaining > 0)
+        {
+            const auto age = metronomeClickTotalSamples - metronomeClickSamplesRemaining;
+            const auto envelope = 1.0 - ((double)age / (double)metronomeClickTotalSamples);
+            const auto clickSample = (float)(std::cos(metronomeClickPhase) * envelope * envelope * gain);
+
+            for (int channel = 0; channel < numChannels; ++channel)
+                buffer.addSample(channel, sample, clickSample);
+
+            metronomeClickPhase += phaseStep;
+            --metronomeClickSamplesRemaining;
+        }
+
+        samplesUntilNextMetronomeClick -= 1.0;
+    }
 }
 
 
@@ -466,6 +533,12 @@ void NamJUCEAudioProcessor::setStateInformation(const void* data, int sizeInByte
         if (xmlState->hasTagName(apvts.state.getType()))
         {
             apvts.replaceState(juce::ValueTree::fromXml(*xmlState));
+            if (auto* parameter = apvts.getParameter("METRONOME_ON_ID"))
+            {
+                parameter->beginChangeGesture();
+                parameter->setValueNotifyingHost(0.f);
+                parameter->endChangeGesture();
+            }
 
             // Try to load last NAM Model
             try
@@ -560,6 +633,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout NamJUCEAudioProcessor::creat
     auto normRange = NormalisableRange<float>(0.0, 20.0, 0.1f);
     parameters.push_back(std::make_unique<juce::AudioParameterFloat>("DOUBLER_SPREAD_ID", "DOUBLER_SPREAD", normRange, 0.0));
     parameters.push_back(std::make_unique<juce::AudioParameterBool>("SMALL_WINDOW_ID", "SMALL_WINDOW", false, "SMALL_WINDOW"));
+    parameters.push_back(std::make_unique<juce::AudioParameterBool>("METRONOME_ON_ID", "METRONOME_ON", false, "METRONOME_ON"));
+    parameters.push_back(std::make_unique<juce::AudioParameterInt>("METRONOME_BPM_ID", "METRONOME_BPM", 40, 240, 120));
 
     tenBandEq.pushParametersToTree(parameters);
 

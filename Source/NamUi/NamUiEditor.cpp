@@ -44,9 +44,29 @@ static constexpr int kBrowserClusterHeight =
 static constexpr int kBrowserTop = kPresetTop + NamUiPresetPanel::kDefaultHeight + kPresetGap;
 static constexpr int kMainStripTop = kBrowserTop + kBrowserClusterHeight + kPresetGap;
 static constexpr int kMainStripHeight = 300;
+static constexpr int kUtilityStripGap = 8;
+static constexpr int kMetronomeStripHeight = 48;
+static constexpr int kMetronomeStripWidth = 134;
 static constexpr auto* kToneDirectorySettingKey = "toneDirectory";
+static constexpr auto* kMetronomeBpmSettingKey = "metronomeBpm";
 static constexpr auto* kPresetDirectoryName = "Presets";
 static constexpr auto* kPresetManifestName = "manifest.json";
+
+static juce::PropertiesFile::Options standalonePropertiesOptions()
+{
+    juce::PropertiesFile::Options options;
+
+    options.applicationName = juce::CharPointer_UTF8(JucePlugin_Name);
+    options.filenameSuffix = ".settings";
+    options.osxLibrarySubFolder = "Application Support";
+#if JUCE_LINUX || JUCE_BSD
+    options.folderName = "~/.config";
+#else
+    options.folderName = "";
+#endif
+
+    return options;
+}
 
 static double normalise(float value, float minValue, float maxValue)
 {
@@ -143,18 +163,18 @@ static juce::StringArray collectionNames(const std::vector<juce::File>& collecti
 
 static juce::String readToneDirectoryFromStandaloneProperties()
 {
-    juce::PropertiesFile::Options options;
+    return juce::PropertiesFile(standalonePropertiesOptions()).getValue(kToneDirectorySettingKey);
+}
 
-    options.applicationName = juce::CharPointer_UTF8(JucePlugin_Name);
-    options.filenameSuffix = ".settings";
-    options.osxLibrarySubFolder = "Application Support";
-#if JUCE_LINUX || JUCE_BSD
-    options.folderName = "~/.config";
-#else
-    options.folderName = "";
-#endif
+static int readMetronomeBpmFromStandaloneProperties()
+{
+    return juce::PropertiesFile(standalonePropertiesOptions()).getIntValue(kMetronomeBpmSettingKey, 120);
+}
 
-    return juce::PropertiesFile(options).getValue(kToneDirectorySettingKey);
+static void setMetronomeParameterValue(juce::AudioProcessorValueTreeState& apvts, float on, float bpm)
+{
+    setParameterValue(apvts, "METRONOME_BPM_ID", bpm);
+    setParameterValue(apvts, "METRONOME_ON_ID", on);
 }
 
 static juce::File presetDirectoryFor(const juce::File& namRoot)
@@ -428,6 +448,33 @@ NamUiEditor::NamUiEditor(NamJUCEAudioProcessor& processor)
     mainControlsStrip.setOnControlsChanged([this]
     {
         markPresetDirty();
+    });
+
+    addAndMakeVisible(metronomeStrip);
+
+#if JucePlugin_Build_Standalone
+    int initialMetronomeBpm = 120;
+    if (auto* holder = juce::StandalonePluginHolder::getInstance())
+        if (auto* settings = holder->settings.get())
+            initialMetronomeBpm = settings->getIntValue(kMetronomeBpmSettingKey, initialMetronomeBpm);
+
+    if (initialMetronomeBpm == 120)
+        initialMetronomeBpm = readMetronomeBpmFromStandaloneProperties();
+
+    setMetronomeParameterValue(audioProcessor.apvts, 0.f, (float)juce::jlimit(40, 240, initialMetronomeBpm));
+#else
+    setParameterValue(audioProcessor.apvts, "METRONOME_ON_ID", 0.f);
+#endif
+
+    metronomeStrip.setOnBpmChanged([](int bpm)
+    {
+    #if JucePlugin_Build_Standalone
+        if (auto* holder = juce::StandalonePluginHolder::getInstance())
+            if (auto* settings = holder->settings.get())
+                settings->setValue(kMetronomeBpmSettingKey, bpm);
+    #else
+        juce::ignoreUnused(bpm);
+    #endif
     });
 
     browserCaptureCollection.setOnPrev([this]
@@ -1090,6 +1137,10 @@ void NamUiEditor::resized()
     }
 
     mainControlsStrip.setBounds(innerPad, kMainStripTop, getWidth() - 2 * innerPad, kMainStripHeight);
+    metronomeStrip.setBounds(innerPad,
+                             kMainStripTop + kMainStripHeight + kUtilityStripGap,
+                             kMetronomeStripWidth,
+                             kMetronomeStripHeight);
 }
 
 } // namespace NamUi

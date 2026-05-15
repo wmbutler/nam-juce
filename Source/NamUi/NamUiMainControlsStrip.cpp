@@ -232,10 +232,10 @@ NamUiMainControlsStrip::ControlState NamUiMainControlsStrip::getControlState() c
 
 void NamUiMainControlsStrip::emitControlStateChanged()
 {
-    notifyAnyControlChanged();
-
     if (onControlStateChanged)
         onControlStateChanged(getControlState());
+
+    notifyAnyControlChanged();
 }
 
 void NamUiMainControlsStrip::notifyAnyControlChanged()

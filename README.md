@@ -22,6 +22,7 @@ This project builds on Steven Atkinson’s [NeuralAmpModeler](https://github.com
 - **JUCE 8** — vendored under `Modules/JUCE/` and wired through CMake.
 - **Presets redesigned** — JSON preset library under `NAM/Presets/` with `manifest.json`, save/rename/delete/reorder, and paths stored **relative to the NAM root** (no UI-only aliases in files).
 - **Single opinionated content layout** — one root folder (your **`NAM`** directory) with fixed subfolders; see below.
+- **Built-in metronome** — compact always-available click control with BPM recall outside the preset library.
 - **Tighter, compact plugin window** — optimized for a narrow portrait layout.
 
 ---

@@ -18,6 +18,8 @@ target_sources(${PROJECT_NAME} PRIVATE
     NamUiLed.h
     NamUiMainControlsStrip.cpp
     NamUiMainControlsStrip.h
+    NamUiMetronomeStrip.cpp
+    NamUiMetronomeStrip.h
     NamUiMuteButton.cpp
     NamUiMuteButton.h
     NamUiPresetPanel.cpp

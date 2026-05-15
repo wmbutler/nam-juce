@@ -137,6 +137,17 @@ private:
     std::atomic<bool> captureActive { false };
     std::atomic<bool> irActive { false };
 
+    std::atomic<float>* metronomeOnParameter { nullptr };
+    std::atomic<float>* metronomeBpmParameter { nullptr };
+    double metronomeSampleRate { 44100.0 };
+    double samplesUntilNextMetronomeClick { 0.0 };
+    int metronomeClickSamplesRemaining { 0 };
+    int metronomeClickTotalSamples { 1 };
+    double metronomeClickPhase { 0.0 };
+    bool metronomeWasOn { false };
+
+    void mixMetronomeClick(juce::AudioBuffer<float>& buffer);
+
     PresetManager presetManager;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(NamJUCEAudioProcessor)

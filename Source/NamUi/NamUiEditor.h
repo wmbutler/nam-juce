@@ -3,6 +3,7 @@
 #include "NamUiBrowserRow.h"
 #include "NamUiColourPalette.h"
 #include "NamUiMainControlsStrip.h"
+#include "NamUiMetronomeStrip.h"
 #include "NamUiPresetPanel.h"
 #include "NamUiSourceSelector.h"
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -28,7 +29,7 @@ public:
 
     /// Concept size from mock (~380×720); adjust when layout settles.
     static constexpr int kDesignWidth = 380;
-    static constexpr int kDesignHeight = 720;
+    static constexpr int kDesignHeight = 748;
 
     /** Shared semantic colours (dark theme); swap struct when light mode lands. */
     const ColourTokens& getColourTokens() const noexcept { return colours; }
@@ -88,6 +89,7 @@ private:
     NamUiPresetPanel presetPanel { colours };
 
     NamUiMainControlsStrip mainControlsStrip { colours };
+    NamUiMetronomeStrip metronomeStrip { colours, audioProcessor.apvts };
 
     NamUiBrowserRow browserCaptureCollection { colours };
     NamUiBrowserRow browserCaptureFile { colours };
