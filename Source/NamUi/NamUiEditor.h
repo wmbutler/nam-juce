@@ -3,7 +3,7 @@
 #include "NamUiBrowserRow.h"
 #include "NamUiColourPalette.h"
 #include "NamUiMainControlsStrip.h"
-#include "NamUiMetronomeStrip.h"
+#include "NamUiFeatureStrip.h"
 #include "NamUiPresetPanel.h"
 #include "NamUiSourceSelector.h"
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -33,7 +33,7 @@ public:
 
     /** Shared semantic colours (dark theme); swap struct when light mode lands. */
     const ColourTokens& getColourTokens() const noexcept { return colours; }
-    bool handlePresetArrowKey(const juce::KeyPress& key);
+    bool handleArrowKeyShortcut(const juce::KeyPress& key);
 
     struct PresetEntry
     {
@@ -89,7 +89,7 @@ private:
     NamUiPresetPanel presetPanel { colours };
 
     NamUiMainControlsStrip mainControlsStrip { colours };
-    NamUiMetronomeStrip metronomeStrip { colours, audioProcessor.apvts };
+    NamUiFeatureStrip featureStrip { colours, audioProcessor.apvts };
 
     NamUiBrowserRow browserCaptureCollection { colours };
     NamUiBrowserRow browserCaptureFile { colours };

@@ -45,8 +45,7 @@ static constexpr int kBrowserTop = kPresetTop + NamUiPresetPanel::kDefaultHeight
 static constexpr int kMainStripTop = kBrowserTop + kBrowserClusterHeight + kPresetGap;
 static constexpr int kMainStripHeight = 300;
 static constexpr int kUtilityStripGap = 8;
-static constexpr int kMetronomeStripHeight = 48;
-static constexpr int kMetronomeStripWidth = 134;
+static constexpr int kFeatureStripHeight = NamUiFeatureStrip::kDefaultHeight;
 static constexpr auto* kToneDirectorySettingKey = "toneDirectory";
 static constexpr auto* kMetronomeBpmSettingKey = "metronomeBpm";
 static constexpr auto* kPresetDirectoryName = "Presets";
@@ -450,7 +449,7 @@ NamUiEditor::NamUiEditor(NamJUCEAudioProcessor& processor)
         markPresetDirty();
     });
 
-    addAndMakeVisible(metronomeStrip);
+    addAndMakeVisible(featureStrip);
 
 #if JucePlugin_Build_Standalone
     int initialMetronomeBpm = 120;
@@ -466,7 +465,7 @@ NamUiEditor::NamUiEditor(NamJUCEAudioProcessor& processor)
     setParameterValue(audioProcessor.apvts, "METRONOME_ON_ID", 0.f);
 #endif
 
-    metronomeStrip.setOnBpmChanged([](int bpm)
+    featureStrip.getMetronomeStrip().setOnBpmChanged([](int bpm)
     {
     #if JucePlugin_Build_Standalone
         if (auto* holder = juce::StandalonePluginHolder::getInstance())
@@ -584,10 +583,13 @@ NamUiEditor::NamUiEditor(NamJUCEAudioProcessor& processor)
     startTimerHz(2);
 }
 
-bool NamUiEditor::handlePresetArrowKey(const juce::KeyPress& key)
+bool NamUiEditor::handleArrowKeyShortcut(const juce::KeyPress& key)
 {
     if (presetPanel.isNamingActive())
         return false;
+
+    if (featureStrip.getMetronomeStrip().handleBpmArrowKey(key))
+        return true;
 
     const int n = (int) presetEntries.size();
     if (n <= 1)
@@ -610,7 +612,7 @@ bool NamUiEditor::handlePresetArrowKey(const juce::KeyPress& key)
 
 bool NamUiEditor::keyPressed(const juce::KeyPress& key)
 {
-    return handlePresetArrowKey(key);
+    return handleArrowKeyShortcut(key);
 }
 
 void NamUiEditor::mouseDown(const juce::MouseEvent& e)
@@ -1137,10 +1139,10 @@ void NamUiEditor::resized()
     }
 
     mainControlsStrip.setBounds(innerPad, kMainStripTop, getWidth() - 2 * innerPad, kMainStripHeight);
-    metronomeStrip.setBounds(innerPad,
-                             kMainStripTop + kMainStripHeight + kUtilityStripGap,
-                             kMetronomeStripWidth,
-                             kMetronomeStripHeight);
+    featureStrip.setBounds(innerPad,
+                           kMainStripTop + kMainStripHeight + kUtilityStripGap,
+                           getWidth() - 2 * innerPad,
+                           kFeatureStripHeight);
 }
 
 } // namespace NamUi

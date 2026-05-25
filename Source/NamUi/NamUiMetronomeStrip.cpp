@@ -38,6 +38,8 @@ void NamUiMetronomeStrip::BpmLabel::editorShown(juce::TextEditor* editor)
 
     editor->setInputRestrictions(3, "0123456789");
     editor->setSelectAllWhenFocused(true);
+    editor->setJustification(juce::Justification::centred);
+    editor->setIndents(0, 0);
     editor->selectAll();
 }
 
@@ -169,6 +171,28 @@ void NamUiMetronomeStrip::setOnBpmChanged(std::function<void(int)> callback)
     onBpmChanged = std::move(callback);
 }
 
+bool NamUiMetronomeStrip::handleBpmArrowKey(const juce::KeyPress& key)
+{
+    if (bpmLabel.isBeingEdited())
+        return false;
+
+    const int step = key.getModifiers().isShiftDown() ? 5 : 1;
+
+    if (key == juce::KeyPress::upKey)
+    {
+        nudgeBpm(step);
+        return true;
+    }
+
+    if (key == juce::KeyPress::downKey)
+    {
+        nudgeBpm(-step);
+        return true;
+    }
+
+    return false;
+}
+
 void NamUiMetronomeStrip::nudgeBpm(int delta)
 {
     const auto nextValue = juce::jlimit(40.0, 240.0, bpmSlider.getValue() + (double)delta);
@@ -202,19 +226,9 @@ void NamUiMetronomeStrip::commitBpmLabelText()
     bpmSlider.setValue((double)bpm, juce::sendNotificationSync);
 }
 
-void NamUiMetronomeStrip::paint(juce::Graphics& g)
-{
-    auto bounds = getLocalBounds().toFloat().reduced(0.5f);
-
-    g.setColour(tokens.bgPanel);
-    g.fillRoundedRectangle(bounds, 4.f);
-    g.setColour(tokens.border);
-    g.drawRoundedRectangle(bounds, 4.f, 1.f);
-}
-
 void NamUiMetronomeStrip::resized()
 {
-    auto area = getLocalBounds().reduced(4);
+    auto area = getLocalBounds();
 
     toggleButton.setBounds(area.removeFromLeft(40));
     area.removeFromLeft(6);

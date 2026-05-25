@@ -210,10 +210,23 @@ protected:
         setToneDirectory
     };
 
+    File getInitialToneDirectoryChooserLocation()
+    {
+        if (auto* settings = appProperties.getUserSettings())
+        {
+            const File savedDirectory { settings->getValue("toneDirectory") };
+
+            if (savedDirectory.isDirectory())
+                return savedDirectory;
+        }
+
+        return File::getSpecialLocation(File::userHomeDirectory);
+    }
+
     void showToneDirectoryChooser()
     {
         toneDirectoryChooser = std::make_unique<FileChooser>("Set Tone Directory",
-                                                             File::getSpecialLocation(File::userHomeDirectory),
+                                                             getInitialToneDirectoryChooserLocation(),
                                                              String{},
                                                              true);
 

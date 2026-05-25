@@ -26,5 +26,5 @@ void NamJUCEAudioProcessorEditor::resized()
 
 bool NamJUCEAudioProcessorEditor::keyPressed(const juce::KeyPress& key)
 {
-    return namUiEditor.handlePresetArrowKey(key);
+    return namUiEditor.handleArrowKeyShortcut(key);
 }

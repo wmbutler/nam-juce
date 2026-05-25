@@ -13,13 +13,17 @@ namespace NamUi
 class NamUiMetronomeStrip : public juce::Component
 {
 public:
+    static constexpr int kDefaultWidth = 134;
+
     NamUiMetronomeStrip(const ColourTokens& palette, juce::AudioProcessorValueTreeState& state);
 
-    void paint(juce::Graphics& g) override;
     void resized() override;
 
     void setOnControlsChanged(std::function<void()> callback);
     void setOnBpmChanged(std::function<void(int)> callback);
+
+    /** Up/Down nudge BPM (+/-1, Shift +/-5). Returns false while the BPM label is being edited. */
+    bool handleBpmArrowKey(const juce::KeyPress& key);
 
 private:
     class BpmLabel : public juce::Label
